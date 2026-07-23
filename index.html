@@ -811,8 +811,8 @@ function envoyerEmailRemplacementOutlook(abs, remplacesSelectionnes) {
   // Récupération des e-mails des agents sélectionnés
   const destinatairesEmails = [];
   remplacesSelectionnes.forEach(nom => {
-    if (annuaireAgents[nom]) {
-      destinatairesEmails.push(annuaireAgents[nom]);
+    if (annuaireAgents[nom] && annuaireAgents[nom].trim() !== "") {
+      destinatairesEmails.push(annuaireAgents[nom].trim());
     }
   });
 
@@ -834,17 +834,13 @@ function envoyerEmailRemplacementOutlook(abs, remplacesSelectionnes) {
 
   const corps = encodeURIComponent(contenuTexte);
 
-  // IMPORTANT : Pour la plupart des versions d'Outlook (desktop et web), 
-  // le point-virgule encodé %3B ou la virgule seule résout le problème de séparation.
-  // Utiliser encodeURIComponent sur la chaîne complète d'e-mails garantit la compatibilité.
-  const emailsDestinatairesStr = destinatairesEmails.map(email => email.trim()).join(';');
-  
-  // Création du lien avec encodage strict
-  const mailtoUrl = `mailto:${encodeURIComponent(emailsDestinatairesStr)}?subject=${sujet}&body=${corps}`;
+  // Séparation par un point-virgule ET un espace (ex: "email1@domaine.com; email2@domaine.com")
+  const listeEmails = destinatairesEmails.join('; ');
 
-  // Utiliser window.open au lieu de window.location.href évite les blocages par le navigateur
-  window.open(mailtoUrl, '_self');
+  // Ouverture du lien mailto sans tout tout ré-encoder pour garder la structure reconnue par Outlook
+  window.location.href = `mailto:${listeEmails}?subject=${sujet}&body=${corps}`;
 }
+
 
 // ──────────────────────────────────────────────
 // FONCTIONS UTILITAIRES
