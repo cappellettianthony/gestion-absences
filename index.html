@@ -692,7 +692,8 @@ function motDePasseOublie() {
 
   if (!email) {
     errorEl.style.color = "#e74c3c";
-    errorEl.textContent = "Veuillez saisir votre adresse e-mail ci-dessus puis cliquer sur 'Mot de passe oublié ?'.";
+    // Message mis à jour si l'e-mail n'est pas saisi :
+    errorEl.textContent = "Veuillez d'abord saisir votre adresse e-mail ci-dessus.";
     errorEl.style.display = "block";
     document.getElementById("login-email").focus();
     return;
@@ -701,13 +702,14 @@ function motDePasseOublie() {
   firebase.auth().sendPasswordResetEmail(email)
     .then(() => {
       errorEl.style.color = "#2ecc71";
-      errorEl.textContent = "E-mail de réinitialisation envoyé ! Vérifiez votre boîte de réception.";
+      // Message clarifié pour la première connexion :
+      errorEl.textContent = "Un e-mail vous a été envoyé pour définir/réinitialiser votre mot de passe (vérifiez vos spams).";
       errorEl.style.display = "block";
     })
     .catch((error) => {
       errorEl.style.color = "#e74c3c";
       if (error.code === 'auth/user-not-found') {
-        errorEl.textContent = "Aucun compte ne correspond à cet e-mail.";
+        errorEl.textContent = "Aucun compte ne correspond à cet e-mail. Veuillez contacter un administrateur.";
       } else if (error.code === 'auth/invalid-email') {
         errorEl.textContent = "Format d'adresse e-mail invalide.";
       } else {
@@ -716,6 +718,7 @@ function motDePasseOublie() {
       errorEl.style.display = "block";
     });
 }
+
 
 function seDeconnecter() {
   firebase.auth().signOut().then(() => {
