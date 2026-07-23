@@ -833,10 +833,17 @@ function envoyerEmailRemplacementOutlook(abs, remplacesSelectionnes) {
     `Le Responsable d'Équipe.`;
 
   const corps = encodeURIComponent(contenuTexte);
-  const emailsDestinatairesStr = destinatairesEmails.join(';');
 
-  // Génération du lien mailto: qui ouvre automatiquement Outlook
-  window.location.href = `mailto:${emailsDestinatairesStr}?subject=${sujet}&body=${corps}`;
+  // IMPORTANT : Pour la plupart des versions d'Outlook (desktop et web), 
+  // le point-virgule encodé %3B ou la virgule seule résout le problème de séparation.
+  // Utiliser encodeURIComponent sur la chaîne complète d'e-mails garantit la compatibilité.
+  const emailsDestinatairesStr = destinatairesEmails.map(email => email.trim()).join(';');
+  
+  // Création du lien avec encodage strict
+  const mailtoUrl = `mailto:${encodeURIComponent(emailsDestinatairesStr)}?subject=${sujet}&body=${corps}`;
+
+  // Utiliser window.open au lieu de window.location.href évite les blocages par le navigateur
+  window.open(mailtoUrl, '_self');
 }
 
 // ──────────────────────────────────────────────
