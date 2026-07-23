@@ -834,8 +834,8 @@ function envoyerEmailRemplacementOutlook(abs, remplacesSelectionnes) {
 
   const corps = encodeURIComponent(contenuTexte);
 
-  // Séparation par un point-virgule ET un espace (ex: "email1@domaine.com; email2@domaine.com")
-  const listeEmails = destinatairesEmails.join('; ');
+  // Séparation par un point-virgule ET un espace (ex: "email1@domaine.com, email2@domaine.com")
+  const listeEmails = destinatairesEmails.join(', ');
 
   // Ouverture du lien mailto sans tout tout ré-encoder pour garder la structure reconnue par Outlook
   window.location.href = `mailto:${listeEmails}?subject=${sujet}&body=${corps}`;
