@@ -619,7 +619,7 @@ let estResponsableRE = false;
 // LISTE DES 10 EMAILS DES RESPONSABLES D'EQUIPE (RE)
 const emailsRE = [
   "cappellettianthony@gmail.com",
-  "re2@entreprise.com",
+  "anthony.cappelletti@edf.fr",
   "re3@entreprise.com",
   "re4@entreprise.com",
   "re5@entreprise.com",
@@ -630,17 +630,55 @@ const emailsRE = [
   "re10@entreprise.com"
 ];
 
-const listeAgents = [
-  "CAPPELLETTI Anthony", "LETAY Benoit", "JACQUOT Antoine", "WEIS Ethan", "PALIS Nicolas",
-  "DAVID Julien", "MAILLY Arnaud", "DIJOUX Fréderic", "BRUCHON Raphaël", "PERRIN Florian",
-  "GOURIOU Gwenaël", "FINCK Nicolas", "GOMEZ Sylvain", "SIMONELLI Florent", "MANTELIN Christophe",
-  "CHAMPANAY Benjamin", "BARHENAY Aurélien", "VIGNE-FIQUET Aurélien", "LAMHOUAL Adnane", "LACROIX Jacques",
-  "ORRICO Giles", "VIAL Stéohane", "LAZAR Ilias", "FAURY Fabien", "GEORGET Cyril",
-  "BENTRAD Nadhir", "BUISSON-DEBON Frank", "MILLET Mickael", "BENTRAND kristophy", "PEYRET Louis",
-  "ASTRUC Pierre", "FZIBOULNIKOFF Olivier", "GENSEL Wilfrid", "MILLE Thierry", "ESKI Gregory",
-  "OLOUSOUZIAN Sevan", "Besoin 6ème EQ1", "Besoin 6ème EQ2", "Besoin 6ème EQ3", "Besoin 6ème EQ4",
-  "Besoin 6ème EQ5", "Besoin 6ème EQ6"
-];
+// ANNUAIRE COMPLET DES AGENTS AVEC LEURS ADRESSES EMAIL
+// ⚠️ Vous pouvez ajuster les adresses e-mail réelles ci-dessous
+const annuaireAgents = {
+  "CAPPELLETTI Anthony": "anthony.cappelletti@edf.fr",
+  "LETAY Benoit": "benoit.letay@entreprise.com",
+  "JACQUOT Antoine": "antoine.jacquot@entreprise.com",
+  "WEIS Ethan": "ethan.weis@entreprise.com",
+  "PALIS Nicolas": "nicolas.palis@entreprise.com",
+  "DAVID Julien": "julien.david@entreprise.com",
+  "MAILLY Arnaud": "arnaud.mailly@entreprise.com",
+  "DIJOUX Fréderic": "frederic.dijoux@entreprise.com",
+  "BRUCHON Raphaël": "raphael.bruchon@entreprise.com",
+  "PERRIN Florian": "florian.perrin@entreprise.com",
+  "GOURIOU Gwenaël": "gwenael.gouriou@entreprise.com",
+  "FINCK Nicolas": "nicolas.finck@entreprise.com",
+  "GOMEZ Sylvain": "sylvain.gomez@entreprise.com",
+  "SIMONELLI Florent": "florent.simonelli@entreprise.com",
+  "MANTELIN Christophe": "christophe.mantelin@entreprise.com",
+  "CHAMPANAY Benjamin": "benjamin.champanay@entreprise.com",
+  "BARHENAY Aurélien": "aurelien.barhenay@entreprise.com",
+  "VIGNE-FIQUET Aurélien": "aurelien.vignefiquet@entreprise.com",
+  "LAMHOUAL Adnane": "adnane.lamhoual@entreprise.com",
+  "LACROIX Jacques": "jacques.lacroix@entreprise.com",
+  "ORRICO Giles": "giles.orrico@entreprise.com",
+  "VIAL Stéohane": "stephane.vial@entreprise.com",
+  "LAZAR Ilias": "ilias.lazar@entreprise.com",
+  "FAURY Fabien": "fabien.faury@entreprise.com",
+  "GEORGET Cyril": "cyril.georget@entreprise.com",
+  "BENTRAD Nadhir": "nadhir.bentrad@entreprise.com",
+  "BUISSON-DEBON Frank": "frank.buissondebon@entreprise.com",
+  "MILLET Mickael": "mickael.millet@entreprise.com",
+  "BENTRAND kristophy": "kristophy.bentrand@entreprise.com",
+  "PEYRET Louis": "louis.peyret@entreprise.com",
+  "ASTRUC Pierre": "pierre.astruc@entreprise.com",
+  "FZIBOULNIKOFF Olivier": "olivier.fziboulnikoff@entreprise.com",
+  "GENSEL Wilfrid": "wilfrid.gensel@entreprise.com",
+  "MILLE Thierry": "thierry.mille@entreprise.com",
+  "ESKI Gregory": "gregory.eski@entreprise.com",
+  "OLOUSOUZIAN Sevan": "sevan.olousouzian@entreprise.com",
+  "Besoin 6ème EQ1": "besoin.eq1@entreprise.com",
+  "Besoin 6ème EQ2": "besoin.eq2@entreprise.com",
+  "Besoin 6ème EQ3": "besoin.eq3@entreprise.com",
+  "Besoin 6ème EQ4": "besoin.eq4@entreprise.com",
+  "Besoin 6ème EQ5": "besoin.eq5@entreprise.com",
+  "Besoin 6ème EQ6": "besoin.eq6@entreprise.com"
+};
+
+// Liste construite automatiquement à partir de l'annuaire pour garder la cohérence
+const listeAgents = Object.keys(annuaireAgents);
 
 // ==================== AUTHENTIFICATION & ROLES ====================
 firebase.auth().onAuthStateChanged((user) => {
@@ -692,7 +730,6 @@ function motDePasseOublie() {
 
   if (!email) {
     errorEl.style.color = "#e74c3c";
-    // Message mis à jour si l'e-mail n'est pas saisi :
     errorEl.textContent = "Veuillez d'abord saisir votre adresse e-mail ci-dessus.";
     errorEl.style.display = "block";
     document.getElementById("login-email").focus();
@@ -702,14 +739,13 @@ function motDePasseOublie() {
   firebase.auth().sendPasswordResetEmail(email)
     .then(() => {
       errorEl.style.color = "#2ecc71";
-      // Message clarifié pour la première connexion :
       errorEl.textContent = "Un e-mail vous a été envoyé pour définir/réinitialiser votre mot de passe (vérifiez vos spams).";
       errorEl.style.display = "block";
     })
     .catch((error) => {
       errorEl.style.color = "#e74c3c";
       if (error.code === 'auth/user-not-found') {
-        errorEl.textContent = "Aucun compte ne correspond à cet e-mail. Veuillez contacter un administrateur.";
+        errorEl.textContent = "Aucun compte ne correspond à cet e-mail.";
       } else if (error.code === 'auth/invalid-email') {
         errorEl.textContent = "Format d'adresse e-mail invalide.";
       } else {
@@ -718,7 +754,6 @@ function motDePasseOublie() {
       errorEl.style.display = "block";
     });
 }
-
 
 function seDeconnecter() {
   firebase.auth().signOut().then(() => {
@@ -764,6 +799,44 @@ function sauvegarder() {
 
   rafraichirTableau();
   remplirFiltreAbsents();
+}
+
+// ──────────────────────────────────────────────
+// ENVOI D'EMAIL OUTLOOK POUR REMPLACEMENT
+// ──────────────────────────────────────────────
+
+function envoyerEmailRemplacementOutlook(abs, remplacesSelectionnes) {
+  if (!remplacesSelectionnes || remplacesSelectionnes.length === 0) return;
+
+  // Récupération des e-mails des agents sélectionnés
+  const destinatairesEmails = [];
+  remplacesSelectionnes.forEach(nom => {
+    if (annuaireAgents[nom]) {
+      destinatairesEmails.push(annuaireAgents[nom]);
+    }
+  });
+
+  if (destinatairesEmails.length === 0) return;
+
+  // Construction du sujet et du corps du message
+  const sujet = encodeURIComponent(`[Remplacement] Attribution de remplacement - ${abs.dateAbsence}`);
+  
+  const contenuTexte = 
+    `Bonjour,\n\n` +
+    `Un remplacement vous a été attribué :\n\n` +
+    `• Date du remplacement : ${abs.dateAbsence}\n` +
+    `• Période / Quart : ${(abs.quart || '').trim()} ${abs.periode}\n` +
+    `• Personne absente : ${abs.nom}\n` +
+    `• Agent(s) désigné(s) : ${remplacesSelectionnes.join(' • ')}\n\n` +
+    `Commentaire RE : ${abs.commentaireCloture || 'Aucun'}\n\n` +
+    `Cordialement,\n` +
+    `Le Responsable d'Équipe.`;
+
+  const corps = encodeURIComponent(contenuTexte);
+  const emailsDestinatairesStr = destinatairesEmails.join(';');
+
+  // Génération du lien mailto: qui ouvre automatiquement Outlook
+  window.location.href = `mailto:${emailsDestinatairesStr}?subject=${sujet}&body=${corps}`;
 }
 
 // ──────────────────────────────────────────────
@@ -1180,6 +1253,11 @@ function validerCodeEtCloturer() {
   sauvegarder();
   closeModal("modal-cloture");
   closeModal("modal-detail");
+
+  // Déclenchement de l'ouverture d'Outlook si au moins un remplaçant est choisi
+  if (remplacesSelectionnes.length > 0) {
+    envoyerEmailRemplacementOutlook(abs, remplacesSelectionnes);
+  }
 }
 
 // ──────────────────────────────────────────────
