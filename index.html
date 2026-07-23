@@ -345,9 +345,9 @@
 </head>
 <body>
 
-  <!-- Bandeau de statut utilisateur / Déconnexion -->
+  <!-- Bandeau de statut profil / Déconnexion -->
   <div id="user-bar" style="display:none; text-align:right; max-width:1200px; margin:0 auto 10px auto; color:#aaccff;">
-    Connecté en tant que : <b id="user-email-display"></b> 
+    <b id="user-email-display" style="background: #2a2a4a; padding: 6px 14px; border-radius: 6px; color: #88f; font-size: 0.95rem;"></b> 
     <button onclick="seDeconnecter()" style="background:#c44; padding:6px 12px; font-size:0.85rem; margin-left:10px;">Déconnexion</button>
   </div>
 
@@ -619,13 +619,14 @@ firebase.auth().onAuthStateChanged((user) => {
   if (user) {
     document.getElementById("modal-login").style.display = "none";
     document.getElementById("user-bar").style.display = "block";
-    document.getElementById("user-email-display").textContent = user.email;
 
-    // Définition du rôle selon l'email connecté
-    if (user.email === "cappellettianthony@gmail.com") { // Ajuster selon l'adresse email du compte RE
+    // Affichage personnalisables selon l'adresse mail du compte RE
+    if (user.email === "cappellettianthony@gmail.com") {
       estResponsableRE = true;
+      document.getElementById("user-email-display").textContent = "Profil Responsable d'Équipe";
     } else {
       estResponsableRE = false;
+      document.getElementById("user-email-display").textContent = "Profil Agent";
     }
 
     loadDataFromFirebase();
@@ -636,8 +637,6 @@ firebase.auth().onAuthStateChanged((user) => {
 });
 
 function seConnecter() {
-
-
   const email = document.getElementById("login-email").value.trim();
   const password = document.getElementById("login-password").value.trim();
   const errorEl = document.getElementById("login-error");
@@ -1347,6 +1346,12 @@ function ouvrirArchives() {
 }
 
 function exporterEtViderArchives() {
+  // Restriction RE : Seul le compte RE peut exporter et vider les archives
+  if (!estResponsableRE) {
+    alert("Action réservée aux Responsables d'Équipe (RE).\nSeul un RE peut exporter vers Excel et vider les archives.");
+    return;
+  }
+
   if (archives.length === 0) {
     alert("Aucune archive à exporter.");
     return;
