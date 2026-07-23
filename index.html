@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Suivi des Absences - Bontons</title>
+  <title>Suivi des Absences - Boutons</title>
   
   <!-- Firebase SDK (Version Compat) -->
   <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
@@ -332,6 +332,16 @@
       background: #d55;
     }
 
+    .forgot-pwd-link {
+      color: #88aaff;
+      font-size: 0.85rem;
+      text-decoration: underline;
+      cursor: pointer;
+      display: inline-block;
+      margin-top: 12px;
+    }
+    .forgot-pwd-link:hover { color: #aaccff; }
+
     @media (max-width: 480px) {
       .filtres-zone { padding: 16px; }
       .filtre-ligne input[type="text"],
@@ -443,9 +453,13 @@
       <label style="text-align:left;">Mot de passe :</label>
       <input type="password" id="login-password" placeholder="••••••••" style="width:100%;" />
       
-      <p id="login-error" style="color:#e74c3c; font-size:0.9rem; display:none; margin-top:10px;"></p>
+      <p id="login-error" style="font-size:0.9rem; display:none; margin-top:10px;"></p>
 
-      <button onclick="seConnecter()" style="width:100%; margin-top:20px; background:#2ecc71;">Se connecter</button>
+      <button onclick="seConnecter()" style="width:100%; margin-top:15px; background:#2ecc71;">Se connecter</button>
+
+      <div>
+        <span class="forgot-pwd-link" onclick="motDePasseOublie()">Mot de passe oublié ?</span>
+      </div>
     </div>
   </div>
 
@@ -602,6 +616,20 @@ let archives = [];
 let absenceCouranteIndex = null;
 let estResponsableRE = false;
 
+// LISTE DES 10 EMAILS DES RESPONSABLES D'EQUIPE (RE)
+const emailsRE = [
+  "cappellettianthony@gmail.com",
+  "re2@entreprise.com",
+  "re3@entreprise.com",
+  "re4@entreprise.com",
+  "re5@entreprise.com",
+  "re6@entreprise.com",
+  "re7@entreprise.com",
+  "re8@entreprise.com",
+  "re9@entreprise.com",
+  "re10@entreprise.com"
+];
+
 const listeAgents = [
   "CAPPELLETTI Anthony", "LETAY Benoit", "JACQUOT Antoine", "WEIS Ethan", "PALIS Nicolas",
   "DAVID Julien", "MAILLY Arnaud", "DIJOUX Fréderic", "BRUCHON Raphaël", "PERRIN Florian",
@@ -620,8 +648,8 @@ firebase.auth().onAuthStateChanged((user) => {
     document.getElementById("modal-login").style.display = "none";
     document.getElementById("user-bar").style.display = "block";
 
-    // Affichage personnalisables selon l'adresse mail du compte RE
-    if (user.email === "cappellettianthony@gmail.com") {
+    // Vérification si l'e-mail fait partie de la liste des RE
+    if (user.email && emailsRE.map(e => e.toLowerCase()).includes(user.email.toLowerCase())) {
       estResponsableRE = true;
       document.getElementById("user-email-display").textContent = "Profil Responsable d'Équipe";
     } else {
@@ -644,6 +672,7 @@ function seConnecter() {
   errorEl.style.display = "none";
 
   if (!email || !password) {
+    errorEl.style.color = "#e74c3c";
     errorEl.textContent = "Veuillez remplir tous les champs.";
     errorEl.style.display = "block";
     return;
@@ -651,7 +680,39 @@ function seConnecter() {
 
   firebase.auth().signInWithEmailAndPassword(email, password)
     .catch((error) => {
+      errorEl.style.color = "#e74c3c";
       errorEl.textContent = "Identifiants incorrects ou erreur de connexion.";
+      errorEl.style.display = "block";
+    });
+}
+
+function motDePasseOublie() {
+  const email = document.getElementById("login-email").value.trim();
+  const errorEl = document.getElementById("login-error");
+
+  if (!email) {
+    errorEl.style.color = "#e74c3c";
+    errorEl.textContent = "Veuillez saisir votre adresse e-mail ci-dessus puis cliquer sur 'Mot de passe oublié ?'.";
+    errorEl.style.display = "block";
+    document.getElementById("login-email").focus();
+    return;
+  }
+
+  firebase.auth().sendPasswordResetEmail(email)
+    .then(() => {
+      errorEl.style.color = "#2ecc71";
+      errorEl.textContent = "E-mail de réinitialisation envoyé ! Vérifiez votre boîte de réception.";
+      errorEl.style.display = "block";
+    })
+    .catch((error) => {
+      errorEl.style.color = "#e74c3c";
+      if (error.code === 'auth/user-not-found') {
+        errorEl.textContent = "Aucun compte ne correspond à cet e-mail.";
+      } else if (error.code === 'auth/invalid-email') {
+        errorEl.textContent = "Format d'adresse e-mail invalide.";
+      } else {
+        errorEl.textContent = "Erreur lors de l'envoi de l'e-mail de réinitialisation.";
+      }
       errorEl.style.display = "block";
     });
 }
@@ -982,7 +1043,6 @@ function ajouterVolontaireSelect() {
 }
 
 function supprimerVolontaire(indexVolontaire) {
-  // Restriction RE : Seul le compte RE peut retirer un volontaire
   if (!estResponsableRE) {
     alert("Action réservée aux Responsables d'Équipe (RE).\nSeul un RE peut supprimer un volontaire.");
     return;
@@ -1051,7 +1111,7 @@ function genererCheckboxesRemplacants() {
 
 function demanderValidationRE(index) {
   if (!estResponsableRE) {
-    alert("Action réservée aux Responsables d'Équipe (RE).\nVeuillez vous connecter avec le compte RE.");
+    alert("Action réservée aux Responsables d'Équipe (RE).\nVeuillez vous connecter avec un compte RE.");
     return;
   }
 
@@ -1068,7 +1128,7 @@ function demanderValidationRE(index) {
 
 function demanderClotureAbsence() {
   if (!estResponsableRE) {
-    alert("Action réservée aux Responsables d'Équipe (RE).\nVeuillez vous connecter avec le compte RE.");
+    alert("Action réservée aux Responsables d'Équipe (RE).\nVeuillez vous connecter avec un compte RE.");
     return;
   }
 
@@ -1153,7 +1213,6 @@ function validerAbsence() {
   const weekend = document.getElementById("weekend").value;
   const quart = document.getElementById("quart").value.trim();
 
-  // Découpage propre de la date ISO pour éviter le décalage UTC
   const [aStr, mStr, jStr] = dateInput.split('-');
   const dateAbsenceStr = `${jStr.padStart(2, '0')}/${mStr.padStart(2, '0')}/${aStr}`;
 
@@ -1185,7 +1244,6 @@ function validerAbsence() {
     }
   };
   
-  // Duplication pour les équipes 2 à 6
   for (let e = 2; e <= 6; e++) {
     reglesParEquipe[String(e)] = reglesParEquipe["1"];
   }
@@ -1346,7 +1404,6 @@ function ouvrirArchives() {
 }
 
 function exporterEtViderArchives() {
-  // Restriction RE : Seul le compte RE peut exporter et vider les archives
   if (!estResponsableRE) {
     alert("Action réservée aux Responsables d'Équipe (RE).\nSeul un RE peut exporter vers Excel et vider les archives.");
     return;
