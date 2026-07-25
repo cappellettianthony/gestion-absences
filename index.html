@@ -802,7 +802,7 @@ function sauvegarder() {
 }
 
 // ──────────────────────────────────────────────
-// ENVOI D'EMAIL OUTLOOK POUR REMPLACEMENT (VIA PROTOCOLE OUTLOOK)
+// ENVOI D'EMAIL OUTLOOK POUR REMPLACEMENT
 // ──────────────────────────────────────────────
 
 function envoyerEmailRemplacementOutlook(abs, remplacesSelectionnes) {
@@ -833,15 +833,13 @@ function envoyerEmailRemplacementOutlook(abs, remplacesSelectionnes) {
     `Le Responsable d'Équipe.`;
 
   const corps = encodeURIComponent(contenuTexte);
-  const listeEmails = destinatairesEmails.join('; ');
 
-  // Utilisation du protocole "ms-outlook:" pour forcer l'ouverture du logiciel Microsoft Outlook EXE
-  const urlOutlook = `ms-outlook:compose?to=${encodeURIComponent(listeEmails)}&subject=${sujet}&body=${corps}`;
+  // Séparation par un point-virgule ET un espace (ex: "email1@domaine.com, email2@domaine.com")
+  const listeEmails = destinatairesEmails.join(', ');
 
-  // Déclenchement de l'ouverture
-  window.location.href = urlOutlook;
+  // Ouverture du lien mailto sans tout tout ré-encoder pour garder la structure reconnue par Outlook
+  window.location.href = `mailto:${listeEmails}?subject=${sujet}&body=${corps}`;
 }
-
 
 
 // ──────────────────────────────────────────────
