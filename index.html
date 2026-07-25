@@ -808,7 +808,7 @@ function sauvegarder() {
 function envoyerEmailRemplacementOutlook(abs, remplacesSelectionnes) {
   if (!remplacesSelectionnes || remplacesSelectionnes.length === 0) return;
 
-  // Récupération des e-mails des agents sélectionnés
+  // 1. Récupération des e-mails des agents sélectionnés
   const destinatairesEmails = [];
   remplacesSelectionnes.forEach(nom => {
     if (annuaireAgents[nom] && annuaireAgents[nom].trim() !== "") {
@@ -818,7 +818,13 @@ function envoyerEmailRemplacementOutlook(abs, remplacesSelectionnes) {
 
   if (destinatairesEmails.length === 0) return;
 
-  // Construction du sujet et du corps
+  // 2. Construction des paramètres "to=" répétés pour CHAQUE destinataire
+  // Exemple : "to=email1%40edf.fr&to=email2%40edf.fr"
+  const paramDestinataires = destinatairesEmails
+    .map(email => `to=${encodeURIComponent(email)}`)
+    .join('&');
+
+  // 3. Construction du sujet et du corps du message
   const sujet = encodeURIComponent(`[Remplacement] Attribution de remplacement - ${abs.dateAbsence}`);
   
   const contenuTexte = 
@@ -833,14 +839,11 @@ function envoyerEmailRemplacementOutlook(abs, remplacesSelectionnes) {
     `Le Responsable d'Équipe.`;
 
   const corps = encodeURIComponent(contenuTexte);
-  
-  // Séparation par virgule ou point-virgule
-  const destinataires = encodeURIComponent(destinatairesEmails.join('; '));
 
-  // Structure de l'URL pour la version Web d'Outlook (Office 365)
-  const urlOutlookWeb = `https://outlook.office.com/mail/deeplink/compose?to=${destinataires}&subject=${sujet}&body=${corps}`;
+  // 4. Assemblage de l'URL finale avec les paramètres répétés
+  const urlOutlookWeb = `https://outlook.office.com/mail/deeplink/compose?${paramDestinataires}&subject=${sujet}&body=${corps}`;
 
-  // Ouverture d'Outlook Web dans un nouvel onglet
+  // 5. Ouverture dans un nouvel onglet
   window.open(urlOutlookWeb, '_blank');
 }
 
