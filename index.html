@@ -802,7 +802,7 @@ function sauvegarder() {
 }
 
 // ──────────────────────────────────────────────
-// ENVOI D'EMAIL OUTLOOK POUR REMPLACEMENT
+// ENVOI D'EMAIL VIA OUTLOOK WEB (OFFICE 365 / OWA)
 // ──────────────────────────────────────────────
 
 function envoyerEmailRemplacementOutlook(abs, remplacesSelectionnes) {
@@ -818,7 +818,7 @@ function envoyerEmailRemplacementOutlook(abs, remplacesSelectionnes) {
 
   if (destinatairesEmails.length === 0) return;
 
-  // Construction du sujet et du corps du message
+  // Construction du sujet et du corps
   const sujet = encodeURIComponent(`[Remplacement] Attribution de remplacement - ${abs.dateAbsence}`);
   
   const contenuTexte = 
@@ -833,12 +833,15 @@ function envoyerEmailRemplacementOutlook(abs, remplacesSelectionnes) {
     `Le Responsable d'Équipe.`;
 
   const corps = encodeURIComponent(contenuTexte);
+  
+  // Séparation par virgule ou point-virgule
+  const destinataires = encodeURIComponent(destinatairesEmails.join('; '));
 
-  // Séparation par un point-virgule ET un espace (ex: "email1@domaine.com, email2@domaine.com")
-  const listeEmails = destinatairesEmails.join(', ');
+  // Structure de l'URL pour la version Web d'Outlook (Office 365)
+  const urlOutlookWeb = `https://outlook.office.com/mail/deeplink/compose?to=${destinataires}&subject=${sujet}&body=${corps}`;
 
-  // Ouverture du lien mailto sans tout tout ré-encoder pour garder la structure reconnue par Outlook
-  window.location.href = `mailto:${listeEmails}?subject=${sujet}&body=${corps}`;
+  // Ouverture d'Outlook Web dans un nouvel onglet
+  window.open(urlOutlookWeb, '_blank');
 }
 
 
