@@ -115,22 +115,6 @@
       background: #4a2c2c !important;
     }
 
-    /* Styles pour la colonne compétences réductible */
-    th.col-competences-header {
-      cursor: pointer;
-      user-select: none;
-      transition: background 0.2s;
-    }
-    th.col-competences-header:hover {
-      background: #2a2a5a;
-    }
-    .col-competences {
-      display: none; /* Réduite par défaut */
-    }
-    .col-competences.visible {
-      display: table-cell !important;
-    }
-
     /* MODALS – styles communs */
     .modal {
       display: none;
@@ -449,9 +433,6 @@
         <th>Créé le</th>
         <th>Quart</th>
         <th>Absent(e)</th>
-        <th class="col-competences-header col-competences" onclick="toggleCompetencesColumn()" title="Cliquer pour afficher/réduire">
-          Compétences <span id="icon-competences">▶</span>
-        </th>
         <th>EQ Dispo</th>
         <th>Dispo</th>
         <th>Validation RE</th>
@@ -583,7 +564,7 @@
   <!-- Modal Archives -->
   <div class="modal" id="modal-archives">
     <div class="modal-content" style="width:90%; max-width:1100px; max-height:90vh; overflow-y:auto;">
-      2.12 Archives des absences clôturées</h2>
+      <h2>Archives des absences clôturées</h2>
       
       <table style="width:100%; border-collapse:collapse; margin:20px 0;">
         <thead>
@@ -610,27 +591,6 @@
   </div>
 
 <script>
-// État d'affichage de la colonne compétences (réduite par défaut)
-let competencesAffichees = false;
-
-function toggleCompetencesColumn() {
-  competencesAffichees = !competencesAffichees;
-  const elements = document.querySelectorAll('.col-competences');
-  const icon = document.getElementById('icon-competences');
-
-  elements.forEach(el => {
-    if (competencesAffichees) {
-      el.classList.add('visible');
-    } else {
-      el.classList.remove('visible');
-    }
-  });
-
-  if (icon) {
-    icon.textContent = competencesAffichees ? '▼' : '▶';
-  }
-}
-
 // ==================== CONFIGURATION FIREBASE ====================
 const firebaseConfig = {
     apiKey: "AIzaSyDsG680YVSR2DGxCjPoQSBpVq-seGhAwyQ",
@@ -1044,14 +1004,11 @@ function rafraichirTableau() {
       validationCell = `<button class="btn-valider-re" onclick="demanderValidationRE(${index}); event.stopPropagation();">Valider RE</button>`;
     }
 
-    const visibleClass = competencesAffichees ? " visible" : "";
-
     tr.innerHTML = `
       <td>${abs.dateAbsence}</td>
       <td>${abs.dateCreation}</td>
       <td>${(abs.quart || '').trim()} ${abs.periode}</td>
       <td>${abs.nom}</td>
-      <td class="col-competences${visibleClass}">${abs.competences || "—"}</td>
       <td>${abs.eqDispo || "—"}</td>
       <td>${(abs.volontaires || []).join(" • ") || "—"}</td>
       <td>${validationCell}</td>
@@ -1062,9 +1019,8 @@ function rafraichirTableau() {
   });
 
   if (tbody.children.length === 0) {
-    const visibleClass = competencesAffichees ? " visible" : "";
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="8" style="text-align:center; padding:40px; color:#888;">
+    tr.innerHTML = `<td colspan="7" style="text-align:center; padding:40px; color:#888;">
       Aucune absence ne correspond aux critères de recherche
     </td>`;
     tbody.appendChild(tr);
