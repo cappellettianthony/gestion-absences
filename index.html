@@ -1226,13 +1226,46 @@
                 for(let j=0; j<12; j++) revealed[i].add(j); 
             });
 
-            // Calcul des scores de la manche (ordre des joueurs, pas trié)
+            // Calcul des scores de base de la manche (cartes restantes non éliminées)
             const roundScores = players.map((n, i) => {
                 let score = 0;
                 const clr = cleared[i] instanceof Set ? cleared[i] : new Set(cleared[i] || []);
                 for (let j = 0; j < 12; j++) if (!clr.has(j)) score += grids[i][j];
                 return score;
             });
+
+            // Pénalité du joueur qui a terminé en premier :
+            // s'il n'a PAS strictement le plus bas score (score >= celui d'un autre joueur),
+            // il ajoute la somme de ses points positifs (cartes > 0 encore sur son plateau).
+            if (finishingPlayer >= 0 && finishingPlayer < players.length) {
+                const finisherScore = roundScores[finishingPlayer];
+                const notStrictlyLowest = players.some((_, i) =>
+                    i !== finishingPlayer && finisherScore >= roundScores[i]
+                );
+                if (notStrictlyLowest) {
+                    const clr = cleared[finishingPlayer] instanceof Set
+                        ? cleared[finishingPlayer]
+                        : new Set(cleared[finishingPlayer] || []);
+                    let positiveSum = 0;
+                    for (let j = 0; j < 12; j++) {
+                        if (!clr.has(j) && grids[finishingPlayer][j] > 0) {
+                            positiveSum += grids[finishingPlayer][j];
+                        }
+                    }
+                    if (positiveSum > 0) {
+                        roundScores[finishingPlayer] += positiveSum;
+                        log("⚠️ Pénalité pour " + players[finishingPlayer] +
+                            " (terminé 1er sans le meilleur score) : +" + positiveSum +
+                            " pts (somme des cartes positives)");
+                    } else {
+                        log("⚠️ " + players[finishingPlayer] +
+                            " a terminé 1er sans le meilleur score, mais aucune carte positive → pas de pénalité");
+                    }
+                } else {
+                    log("✅ " + players[finishingPlayer] +
+                        " a terminé 1er avec le meilleur score strict → pas de pénalité");
+                }
+            }
 
             // Initialiser cumulatifs si besoin
             if (!cumulativeTotals.length || cumulativeTotals.length !== players.length) {
