@@ -221,6 +221,42 @@
         let remoteRef = null;
         let applyingRemote = false;
         let logMessages = [];
+        let clientId = null;
+
+        // --- Persistance session (survit au refresh) ---
+        function getOrCreateClientId() {
+            let id = localStorage.getItem('skyjo_clientId');
+            if (!id) {
+                id = 'c_' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+                localStorage.setItem('skyjo_clientId', id);
+            }
+            return id;
+        }
+
+        function saveSession() {
+            if (!roomId) return;
+            localStorage.setItem('skyjo_session', JSON.stringify({
+                roomId,
+                myPlayerIndex,
+                isHost,
+                name: (document.getElementById('my-name') && document.getElementById('my-name').value) || 'Joueur',
+                clientId
+            }));
+        }
+
+        function loadSession() {
+            try {
+                const raw = localStorage.getItem('skyjo_session');
+                if (!raw) return null;
+                return JSON.parse(raw);
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function clearSession() {
+            localStorage.removeItem('skyjo_session');
+        }
 
         function createDeck() {
             deck = [];
@@ -261,6 +297,7 @@
 
         function createRemoteGame() {
             const name = (document.getElementById('my-name').value || 'Joueur').trim();
+            clientId = getOrCreateClientId();
             roomId = generateRoomCode();
             isHost = true;
             isRemoteMode = true;
@@ -269,11 +306,12 @@
             const roomData = {
                 host: true,
                 status: 'waiting',
-                players: [{ name, joinedAt: Date.now() }],
+                players: [{ name, joinedAt: Date.now(), clientId }],
                 createdAt: Date.now()
             };
 
             db.ref('skyjo/' + roomId).set(roomData).then(() => {
+                saveSession();
                 document.getElementById('room-wait').style.display = 'block';
                 document.getElementById('room-code-display').textContent = roomId;
                 showQRCode();
@@ -291,6 +329,7 @@
                 alert('Entre un code de salle valide');
                 return;
             }
+            clientId = getOrCreateClientId();
             roomId = code;
             isHost = false;
             isRemoteMode = true;
@@ -299,20 +338,40 @@
             ref.once('value').then(snap => {
                 if (!snap.exists()) {
                     alert('Salle introuvable');
+                    clearSession();
                     return;
                 }
                 const data = snap.val();
-                if (data.status !== 'waiting') {
-                    alert('La partie a déjà commencé');
+                const plist = data.players || [];
+
+                // Déjà dans la salle (même clientId) → reconnexion
+                const existingIdx = plist.findIndex(p => p.clientId === clientId);
+                if (existingIdx >= 0) {
+                    myPlayerIndex = existingIdx;
+                    isHost = (existingIdx === 0);
+                    saveSession();
+                    document.getElementById('room-wait').style.display = 'block';
+                    document.getElementById('room-code-display').textContent = roomId;
+                    showQRCode();
+                    listenRoom();
+                    if (data.status === 'playing' || data.status === 'ended') {
+                        applyRemoteState(data);
+                    }
                     return;
                 }
-                if ((data.players || []).length >= 4) {
+
+                if (data.status !== 'waiting') {
+                    alert('La partie a déjà commencé et tu n\'étais pas dedans');
+                    return;
+                }
+                if (plist.length >= 4) {
                     alert('Salle pleine (max 4 joueurs)');
                     return;
                 }
-                const newPlayers = [...(data.players || []), { name, joinedAt: Date.now() }];
+                const newPlayers = [...plist, { name, joinedAt: Date.now(), clientId }];
                 myPlayerIndex = newPlayers.length - 1;
                 ref.update({ players: newPlayers }).then(() => {
+                    saveSession();
                     document.getElementById('room-wait').style.display = 'block';
                     document.getElementById('room-code-display').textContent = roomId;
                     showQRCode();
@@ -507,6 +566,8 @@
             const mode = document.querySelector('input[name="mode"]:checked').value;
             isSoloMode = mode === 'solo';
             isRemoteMode = false;
+            clearSession();
+            if (remoteRef) { try { remoteRef.off(); } catch(e){} remoteRef = null; }
             
             if (isSoloMode) {
                 aiLevel = parseInt(document.getElementById('ai-level').value);
@@ -1049,10 +1110,75 @@
             }
         }
 
+        // Reconnexion auto après refresh
+        function tryReconnectSession() {
+            clientId = getOrCreateClientId();
+            const session = loadSession();
+            const params = new URLSearchParams(window.location.search);
+            const urlRoom = (params.get('room') || '').toUpperCase();
+
+            // Priorité : URL ?room= puis session locale
+            const targetRoom = urlRoom || (session && session.roomId) || null;
+            if (!targetRoom) return;
+
+            document.querySelector('input[name="mode"][value="distant"]').checked = true;
+            toggleMode();
+            document.getElementById('join-code').value = targetRoom;
+            if (session && session.name) {
+                document.getElementById('my-name').value = session.name;
+            }
+
+            roomId = targetRoom;
+            isRemoteMode = true;
+            isHost = !!(session && session.isHost && session.roomId === targetRoom);
+            myPlayerIndex = (session && session.roomId === targetRoom) ? (session.myPlayerIndex ?? -1) : -1;
+
+            const ref = db.ref('skyjo/' + roomId);
+            ref.once('value').then(snap => {
+                if (!snap.exists()) {
+                    clearSession();
+                    return;
+                }
+                const data = snap.val();
+                const plist = data.players || [];
+
+                // Retrouver mon index via clientId
+                const idx = plist.findIndex(p => p.clientId === clientId);
+                if (idx >= 0) {
+                    myPlayerIndex = idx;
+                    isHost = (idx === 0);
+                    saveSession();
+                } else if (myPlayerIndex < 0 || myPlayerIndex >= plist.length) {
+                    // Pas encore dans la salle : laisser l'utilisateur cliquer Rejoindre
+                    // (sauf si waiting et on veut auto-join — on n'auto-ajoute pas pour éviter doublons)
+                    document.getElementById('room-wait').style.display = 'block';
+                    document.getElementById('room-code-display').textContent = roomId;
+                    showQRCode();
+                    listenRoom();
+                    return;
+                }
+
+                document.getElementById('room-wait').style.display = 'block';
+                document.getElementById('room-code-display').textContent = roomId;
+                showQRCode();
+                listenRoom();
+
+                if (data.status === 'playing' || data.status === 'ended') {
+                    applyRemoteState(data);
+                } else {
+                    updateWaitingList(plist);
+                    if (isHost && plist.length >= 2) {
+                        document.getElementById('start-remote-btn').style.display = 'inline-block';
+                    }
+                }
+            }).catch(() => {});
+        }
+
         document.getElementById('num-players').addEventListener('input', updateNameInputs);
         window.onload = function() {
             updateNameInputs();
             checkUrlRoom();
+            tryReconnectSession();
         };
     </script>
 </body>
