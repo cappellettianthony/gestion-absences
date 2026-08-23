@@ -107,7 +107,12 @@
         button:hover { background: #440077; }
         button:disabled { opacity: 0.4; cursor: not-allowed; }
         
-        .log { max-height: 200px; overflow-y: auto; background: #000; padding: 12px; text-align: left; font-size: 13px; margin: 20px auto; max-width: 800px; border: 2px solid #0f0; }
+        .log { display: none; } /* log principal masqué — visible via modal */
+        .log-modal-content {
+            max-height: 50vh; overflow-y: auto; background: #000; padding: 12px;
+            text-align: left; font-size: 13px; margin: 12px auto; border: 2px solid #0f0;
+            border-radius: 8px;
+        }
         
         #qrcode { margin: 15px auto; background: #fff; padding: 10px; display: inline-block; border-radius: 8px; }
         .room-info { font-size: 14px; margin: 10px 0; color: #ff0; }
@@ -213,10 +218,12 @@
         
         <div id="players-container"></div>
         
-        <div class="log" id="log"></div>
+        <!-- log masqué : contenu synchronisé dans le modal -->
+        <div class="log" id="log" style="display:none;"></div>
         <div style="margin: 20px auto; display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;">
             <button id="btn-nouvelle-manche" onclick="nouvelleManche()">Nouvelle Manche</button>
             <button id="btn-scores" onclick="openScoreModal()">Scores</button>
+            <button id="btn-logs" onclick="openLogModal()">Logs</button>
             <button id="btn-share-ingame" onclick="shareJoinLink()" style="border-color:#0ff; color:#0ff; display:none;">📤 Partager</button>
             <button id="btn-accueil" onclick="goHome()" style="border-color:#ff0; color:#ff0;">Accueil</button>
         </div>
@@ -229,6 +236,15 @@
             <p style="font-size:12px;color:#aaa;">Premier joueur à atteindre 100 points perd — le plus bas score gagne</p>
             <div id="score-table-container"></div>
             <button onclick="closeScoreModal()">Revenir à la partie en cours</button>
+        </div>
+    </div>
+
+    <!-- Modal Logs -->
+    <div id="log-modal" class="modal-overlay" onclick="if(event.target===this) closeLogModal()">
+        <div class="modal-box">
+            <h2>Journal de la partie</h2>
+            <div id="log-modal-content" class="log-modal-content"></div>
+            <button onclick="closeLogModal()">Revenir à la partie en cours</button>
         </div>
     </div>
 
@@ -725,8 +741,16 @@
                 }
 
                 const logEl = document.getElementById('log');
-                logEl.innerHTML = logMessages.map(m => '<div>' + m + '</div>').join('');
-                logEl.scrollTop = logEl.scrollHeight;
+                if (logEl) {
+                    logEl.innerHTML = logMessages.map(m => '<div>' + m + '</div>').join('');
+                    logEl.scrollTop = logEl.scrollHeight;
+                }
+                const modalContent = document.getElementById('log-modal-content');
+                const logModal = document.getElementById('log-modal');
+                if (modalContent && logModal && logModal.classList.contains('visible')) {
+                    modalContent.innerHTML = logMessages.map(m => '<div>' + m + '</div>').join('');
+                    modalContent.scrollTop = modalContent.scrollHeight;
+                }
 
                 updatePhase();
                 renderAll();
@@ -896,17 +920,20 @@
 
             const defausserBtn = document.getElementById('defausser-btn');
             const canAct = canInteract() && phase === 'playing';
-            defausserBtn.disabled = !canAct || (selectedCard === null && !mustReveal) || (players[currentPlayerIndex] === "IA");
+            // DEFAUSSER : uniquement si on a une carte en main (pas en phase mustReveal)
+            defausserBtn.disabled = !canAct || selectedCard === null || mustReveal || (players[currentPlayerIndex] === "IA");
             
             const deckCard = document.getElementById('deck-card');
             const discardEl = document.getElementById('discard-card');
+            // Pioche / défausse interdites si carte en main OU obligation de retourner une carte
+            const canDrawOrTake = canAct && selectedCard === null && !mustReveal;
             if (deckCard) {
-                deckCard.style.opacity = canAct && selectedCard === null ? '1' : '0.5';
-                deckCard.style.pointerEvents = canAct && selectedCard === null ? 'auto' : 'none';
+                deckCard.style.opacity = canDrawOrTake ? '1' : '0.5';
+                deckCard.style.pointerEvents = canDrawOrTake ? 'auto' : 'none';
             }
             if (discardEl) {
-                discardEl.style.opacity = canAct && selectedCard === null && discardPile.length > 0 ? '1' : '0.5';
-                discardEl.style.pointerEvents = canAct && selectedCard === null ? 'auto' : 'none';
+                discardEl.style.opacity = canDrawOrTake && discardPile.length > 0 ? '1' : '0.5';
+                discardEl.style.pointerEvents = canDrawOrTake ? 'auto' : 'none';
             }
             updateTurnLockUI();
         }
@@ -952,10 +979,12 @@
             } 
             else if (mustReveal && !revealed[playerIdx].has(pos)) {
                 revealed[playerIdx].add(pos);
-                log(`Tu retournes : ${grids[playerIdx][pos]}`);
+                log(`Tu retournes : ${grids[playerIdx][pos]} — tour terminé`);
                 mustReveal = false;
                 renderAll();
                 nextPlayer();
+            } else if (mustReveal && revealed[playerIdx].has(pos)) {
+                log("❌ Choisis une carte encore face cachée.");
             }
         }
 
@@ -1059,6 +1088,10 @@
 
         function drawFromDeck() {
             if (phase !== 'playing' || selectedCard !== null || phase === 'ended') return;
+            if (mustReveal) {
+                log("❌ Après avoir défaussé ta pioche, tu dois uniquement retourner une carte de ton jeu.");
+                return;
+            }
             if (!canInteract()) return;
             if (players[currentPlayerIndex] === "IA") return;
             if (deck.length === 0) {
@@ -1077,6 +1110,10 @@
 
         function takeDiscard() {
             if (phase !== 'playing' || selectedCard !== null || discardPile.length === 0 || phase === 'ended') return;
+            if (mustReveal) {
+                log("❌ Après avoir défaussé ta pioche, tu dois uniquement retourner une carte de ton jeu.");
+                return;
+            }
             if (!canInteract()) return;
             if (players[currentPlayerIndex] === "IA") return;
             selectedCard = discardPile.pop();
@@ -1118,13 +1155,19 @@
             if (phase !== 'playing' || phase === 'ended') return;
             if (!canInteract()) return;
             if (players[currentPlayerIndex] === "IA") return;
+            // Après défausse d'une carte piochée : obligation de retourner une carte, pas de passer
+            if (mustReveal) {
+                log("❌ Retourne une carte cachée de ton jeu pour terminer ton tour.");
+                return;
+            }
             if (selectedCard !== null) {
                 if (selectedFromDiscard) {
                     log("❌ Impossible de défausser une carte prise de la défausse !");
                     return;
                 }
+                // Carte venue de la pioche → défausse autorisée, puis obligation de retourner une carte
                 discardPile.push(selectedCard);
-                log(`Carte défaussée. Retourne maintenant une carte cachée.`);
+                log("Carte défaussée. Tu ne peux plus piocher ni prendre la défausse : retourne une carte cachée de ton jeu.");
                 selectedCard = null;
                 selectedFromDiscard = false;
                 mustReveal = true;
@@ -1409,6 +1452,7 @@
 
             closeGameOverModal();
             closeScoreModal();
+            closeLogModal();
 
             if (isRemoteMode) {
                 // Optionnel : marquer la salle comme abandonnée si on est hôte
@@ -1478,8 +1522,33 @@
         function log(m) {
             logMessages.push(m);
             const logEl = document.getElementById('log');
-            logEl.innerHTML += `<div>${m}</div>`;
-            logEl.scrollTop = logEl.scrollHeight;
+            if (logEl) {
+                logEl.innerHTML += '<div>' + m + '</div>';
+                logEl.scrollTop = logEl.scrollHeight;
+            }
+            // Si le modal logs est ouvert, rafraîchir
+            const modalContent = document.getElementById('log-modal-content');
+            const logModal = document.getElementById('log-modal');
+            if (modalContent && logModal && logModal.classList.contains('visible')) {
+                modalContent.innerHTML = logMessages.map(x => '<div>' + x + '</div>').join('');
+                modalContent.scrollTop = modalContent.scrollHeight;
+            }
+        }
+
+        function openLogModal() {
+            const modalContent = document.getElementById('log-modal-content');
+            if (modalContent) {
+                modalContent.innerHTML = logMessages.length
+                    ? logMessages.map(x => '<div>' + x + '</div>').join('')
+                    : '<div style="color:#888;">Aucun événement pour le moment.</div>';
+                modalContent.scrollTop = modalContent.scrollHeight;
+            }
+            document.getElementById('log-modal').classList.add('visible');
+        }
+
+        function closeLogModal() {
+            const el = document.getElementById('log-modal');
+            if (el) el.classList.remove('visible');
         }
 
         function updateNameInputs() {
