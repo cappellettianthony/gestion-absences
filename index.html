@@ -116,7 +116,6 @@
     </style>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
     <h1>SKYJO</h1>
@@ -323,26 +322,57 @@
         }
 
         function showQRCode() {
-            const url = window.location.href.split('?')[0] + '?room=' + roomId;
+            // Lien de rejoindre = même page + ?room=CODE
+            // Si fichier local (file://), le QR contient juste le code ; le joueur ouvre le même HTML et entre le code.
+            let base = window.location.href.split('?')[0];
+            const isLocalFile = base.indexOf('file:') === 0;
+            const joinUrl = isLocalFile
+                ? ('CODE SALLE: ' + roomId + ' — Ouvre Skyjo et entre ce code')
+                : (base + '?room=' + roomId);
+
             const qrDiv = document.getElementById('qrcode');
             qrDiv.innerHTML = '';
-            try {
-                new QRCode(qrDiv, {
-                    text: url,
-                    width: 180,
-                    height: 180,
-                    colorDark: '#000000',
-                    colorLight: '#ffffff',
-                    correctLevel: QRCode.CorrectLevel.M
-                });
-            } catch (e) {
-                qrDiv.innerHTML = '<p style="color:#f00">QR erreur</p>';
+
+            // QR via API image (aucune lib JS nécessaire)
+            const img = document.createElement('img');
+            img.width = 180;
+            img.height = 180;
+            img.alt = 'QR Code';
+            img.style.display = 'block';
+            img.style.margin = '0 auto';
+            img.src = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&margin=8&data=' + encodeURIComponent(joinUrl);
+            img.onerror = function() {
+                // Fallback si API bloquée
+                this.style.display = 'none';
+                const fallback = document.createElement('p');
+                fallback.style.color = '#ff0';
+                fallback.style.fontSize = '14px';
+                fallback.textContent = 'Code salle : ' + roomId;
+                qrDiv.insertBefore(fallback, qrDiv.firstChild);
+            };
+            qrDiv.appendChild(img);
+
+            const codeP = document.createElement('p');
+            codeP.style.fontSize = '18px';
+            codeP.style.color = '#ff0';
+            codeP.style.marginTop = '12px';
+            codeP.innerHTML = 'Code : <strong style="font-size:22px;letter-spacing:3px;">' + roomId + '</strong>';
+            qrDiv.appendChild(codeP);
+
+            if (!isLocalFile) {
+                const link = document.createElement('p');
+                link.style.fontSize = '11px';
+                link.style.wordBreak = 'break-all';
+                link.innerHTML = '<a href="' + joinUrl + '" style="color:#0ff">' + joinUrl + '</a>';
+                qrDiv.appendChild(link);
+            } else {
+                const tip = document.createElement('p');
+                tip.style.fontSize = '12px';
+                tip.style.color = '#0f0';
+                tip.style.marginTop = '8px';
+                tip.innerHTML = 'L\'autre joueur ouvre le même fichier HTML,<br>choisit Mode Distant, entre le code <strong>' + roomId + '</strong> et clique Rejoindre.';
+                qrDiv.appendChild(tip);
             }
-            const link = document.createElement('p');
-            link.style.fontSize = '11px';
-            link.style.wordBreak = 'break-all';
-            link.innerHTML = '<a href="' + url + '" style="color:#0ff">' + url + '</a>';
-            qrDiv.appendChild(link);
         }
 
         function listenRoom() {
