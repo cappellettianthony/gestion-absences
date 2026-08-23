@@ -586,6 +586,34 @@
             return myPlayerIndex === currentPlayerIndex;
         }
 
+        // Vibration au début de ton tour (mobile)
+        let lastVibratedTurnKey = null;
+        function vibrateOnMyTurn() {
+            if (phase === 'ended') return;
+            // En distant : uniquement si c'est mon tour
+            // En local : vibration à chaque changement de joueur (sauf IA)
+            let shouldVibrate = false;
+            if (isRemoteMode) {
+                shouldVibrate = (myPlayerIndex === currentPlayerIndex);
+            } else {
+                shouldVibrate = (players[currentPlayerIndex] !== 'IA');
+            }
+            if (!shouldVibrate) return;
+
+            const key = roomId + '|' + phase + '|' + currentPlayerIndex + '|' + (logMessages.length || 0);
+            // Évite de re-vibrer à chaque re-render du même tour
+            const turnKey = (roomId || 'local') + ':' + phase + ':' + currentPlayerIndex;
+            if (lastVibratedTurnKey === turnKey) return;
+            lastVibratedTurnKey = turnKey;
+
+            try {
+                if (navigator.vibrate) {
+                    // pattern : court - pause - court (notification de tour)
+                    navigator.vibrate([80, 40, 80]);
+                }
+            } catch (e) {}
+        }
+
         function updateTurnLockUI() {
             const msg = document.getElementById('turn-lock-msg');
             if (isRemoteMode && !canInteract() && phase !== 'ended') {
@@ -594,6 +622,7 @@
             } else {
                 msg.style.display = 'none';
             }
+            vibrateOnMyTurn();
         }
 
         function startGame() {
@@ -649,6 +678,7 @@
             const name = players[currentPlayerIndex] || '?';
             document.getElementById('current-player').innerHTML = `<strong>${name} → À ton tour</strong>` +
                 (isRemoteMode ? (canInteract() ? ' <span style="color:#0f0">(c\'est toi)</span>' : ' <span style="color:#f80">(attends)</span>') : '');
+            vibrateOnMyTurn();
         }
 
         function renderAll() {
