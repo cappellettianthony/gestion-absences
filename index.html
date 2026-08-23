@@ -318,10 +318,16 @@
         }
 
         function createDeck() {
+            // Composition officielle Skyjo (150 cartes)
+            // -2 × 5 | -1 × 10 | 0 × 15 | 1 à 12 × 10 chacune
             deck = [];
-            for (let i = 0; i < 4; i++) deck.push(-2);
-            for (let i = 0; i < 8; i++) deck.push(0);
-            for (let v = 1; v <= 12; v++) for (let i = 0; i < 8; i++) deck.push(v);
+            for (let i = 0; i < 5; i++) deck.push(-2);
+            for (let i = 0; i < 10; i++) deck.push(-1);
+            for (let i = 0; i < 15; i++) deck.push(0);
+            for (let v = 1; v <= 12; v++) {
+                for (let i = 0; i < 10; i++) deck.push(v);
+            }
+            // Total = 5 + 10 + 15 + 120 = 150
             shuffle(deck);
         }
 
