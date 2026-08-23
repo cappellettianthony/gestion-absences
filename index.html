@@ -188,7 +188,10 @@
         <div id="players-container"></div>
         
         <div class="log" id="log"></div>
-        <button onclick="location.reload()">Nouvelle Partie</button>
+        <div style="margin: 20px auto; display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;">
+            <button id="btn-nouvelle-partie" onclick="nouvellePartie()">Nouvelle Partie</button>
+            <button id="btn-accueil" onclick="goHome()" style="border-color:#ff0; color:#ff0;">Accueil</button>
+        </div>
     </div>
 
     <script>
@@ -982,6 +985,144 @@
             scores.forEach(s => log(`${s.name} : ${s.score} points`));
             log("<strong>Partie terminée !</strong>");
             if (isRemoteMode) pushFullState('ended');
+        }
+
+        // === Nouvelle partie (mêmes joueurs, même salle) ===
+        function nouvellePartie() {
+            if (isRemoteMode) {
+                // Seul l'hôte relance ; les autres voient l'état via Firebase
+                if (!isHost && myPlayerIndex !== 0) {
+                    alert("Seul l'hôte peut relancer une nouvelle partie. Demande-lui de cliquer sur Nouvelle Partie.");
+                    return;
+                }
+                // Relancer avec les mêmes joueurs (playerMeta déjà connu)
+                if (!playerMeta.length && players.length) {
+                    playerMeta = players.map((n, i) => ({
+                        name: n,
+                        clientId: (i === myPlayerIndex ? clientId : null),
+                        joinedAt: Date.now()
+                    }));
+                }
+                if (players.length < 2) {
+                    alert('Pas assez de joueurs pour relancer');
+                    return;
+                }
+                createDeck();
+                grids = [];
+                revealed = [];
+                cleared = [];
+                for (let i = 0; i < players.length; i++) {
+                    grids.push(Array.from({ length: 12 }, () => deck.pop()));
+                    revealed.push([]);
+                    cleared.push([]);
+                }
+                discardPile = [deck.pop()];
+                phase = 'initialReveal';
+                currentPlayerIndex = 0;
+                selectedCard = null;
+                selectedFromDiscard = false;
+                mustReveal = false;
+                finishingPlayer = -1;
+                logMessages = ['=== Nouvelle partie (même salle) ==='];
+                document.getElementById('log').innerHTML = '';
+                pushFullState('playing');
+                // applyRemoteState sera déclenché par le listener, mais on force aussi localement
+                updatePhase();
+                renderAll();
+                return;
+            }
+
+            // Mode local / solo : relancer avec les mêmes joueurs
+            const samePlayers = players.slice();
+            const wasSolo = isSoloMode;
+            const savedAi = aiLevel;
+
+            createDeck();
+            grids = [];
+            revealed = [];
+            cleared = [];
+            players = samePlayers;
+            for (let i = 0; i < players.length; i++) {
+                grids.push(Array.from({ length: 12 }, () => deck.pop()));
+                revealed.push(new Set());
+                cleared.push(new Set());
+            }
+            discardPile = [deck.pop()];
+            phase = 'initialReveal';
+            currentPlayerIndex = 0;
+            selectedCard = null;
+            selectedFromDiscard = false;
+            mustReveal = false;
+            finishingPlayer = -1;
+            logMessages = [];
+            document.getElementById('log').innerHTML = '';
+            isSoloMode = wasSolo;
+            aiLevel = savedAi;
+            updatePhase();
+            renderAll();
+            if (isSoloMode && currentPlayerIndex === 1) setTimeout(aiInitialReveal, 600);
+        }
+
+        // === Retour à l'accueil (quitte la partie / la salle) ===
+        function goHome() {
+            if (isRemoteMode) {
+                // Optionnel : marquer la salle comme abandonnée si on est hôte
+                if (remoteRef && isHost) {
+                    try {
+                        remoteRef.update({ status: 'closed' });
+                    } catch (e) {}
+                }
+                if (remoteRef) {
+                    try { remoteRef.off(); } catch (e) {}
+                    remoteRef = null;
+                }
+                clearSession();
+                isRemoteMode = false;
+                roomId = null;
+                myPlayerIndex = -1;
+                isHost = false;
+                playerMeta = [];
+            }
+
+            // Reset état jeu
+            players = [];
+            deck = [];
+            discardPile = [];
+            grids = [];
+            revealed = [];
+            cleared = [];
+            phase = 'initialReveal';
+            currentPlayerIndex = 0;
+            selectedCard = null;
+            selectedFromDiscard = false;
+            mustReveal = false;
+            finishingPlayer = -1;
+            logMessages = [];
+            isSoloMode = false;
+
+            document.getElementById('log').innerHTML = '';
+            document.getElementById('game-screen').style.display = 'none';
+            document.getElementById('setup-screen').style.display = 'block';
+
+            // Reset UI distant
+            const roomWait = document.getElementById('room-wait');
+            if (roomWait) roomWait.style.display = 'none';
+            const startRemoteBtn = document.getElementById('start-remote-btn');
+            if (startRemoteBtn) startRemoteBtn.style.display = 'none';
+            const qr = document.getElementById('qrcode');
+            if (qr) qr.innerHTML = '';
+            const waiting = document.getElementById('waiting-players');
+            if (waiting) waiting.innerHTML = '';
+            const joinCode = document.getElementById('join-code');
+            if (joinCode) joinCode.value = '';
+
+            // Revenir au mode multi par défaut
+            const multiRadio = document.querySelector('input[name="mode"][value="multi"]');
+            if (multiRadio) {
+                multiRadio.checked = true;
+                toggleMode();
+            }
+            updateNameInputs();
         }
 
         function log(m) {
