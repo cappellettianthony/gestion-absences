@@ -222,6 +222,7 @@
         let applyingRemote = false;
         let logMessages = [];
         let clientId = null;
+        let playerMeta = []; // [{name, clientId, joinedAt}, ...] préserve les IDs entre syncs
 
         // --- Persistance session (survit au refresh) ---
         function getOrCreateClientId() {
@@ -467,7 +468,12 @@
                     alert('Il faut au moins 2 joueurs');
                     return;
                 }
-                players = plist.map(p => p.name || 'Joueur');
+                playerMeta = plist.map(p => ({
+                    name: p.name || 'Joueur',
+                    clientId: p.clientId || null,
+                    joinedAt: p.joinedAt || Date.now()
+                }));
+                players = playerMeta.map(p => p.name);
                 createDeck();
                 grids = [];
                 revealed = [];
@@ -492,9 +498,18 @@
 
         function pushFullState(status) {
             if (!isRemoteMode || !remoteRef) return;
+            // Préserver clientId / joinedAt des joueurs
+            const playersPayload = players.map((n, i) => {
+                const meta = playerMeta[i] || {};
+                return {
+                    name: n,
+                    clientId: meta.clientId || null,
+                    joinedAt: meta.joinedAt || Date.now()
+                };
+            });
             const state = {
                 status: status || 'playing',
-                players: players.map((n) => ({ name: n })),
+                players: playersPayload,
                 deck,
                 discardPile,
                 grids,
@@ -515,7 +530,23 @@
             if (applyingRemote) return;
             applyingRemote = true;
             try {
-                players = (data.players || []).map(p => p.name || 'Joueur');
+                playerMeta = (data.players || []).map(p => ({
+                    name: p.name || 'Joueur',
+                    clientId: p.clientId || null,
+                    joinedAt: p.joinedAt || null
+                }));
+                players = playerMeta.map(p => p.name);
+
+                // Re-résoudre mon index si possible
+                if (clientId) {
+                    const idx = playerMeta.findIndex(p => p.clientId === clientId);
+                    if (idx >= 0) {
+                        myPlayerIndex = idx;
+                        isHost = (idx === 0);
+                        saveSession();
+                    }
+                }
+
                 deck = data.deck || [];
                 discardPile = data.discardPile || [];
                 grids = data.grids || [];
