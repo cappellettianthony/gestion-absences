@@ -113,6 +113,30 @@
         .room-info { font-size: 14px; margin: 10px 0; color: #ff0; }
         .waiting-list { text-align: left; max-width: 400px; margin: 10px auto; }
         .locked-msg { position: fixed; top: 80px; left: 50%; transform: translateX(-50%); background: #220044; border: 3px solid #ff0; padding: 12px 24px; z-index: 10; font-size: 16px; display: none; }
+
+        .modal-overlay {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+            z-index: 100; align-items: center; justify-content: center; padding: 20px;
+        }
+        .modal-overlay.visible { display: flex; }
+        .modal-box {
+            background: rgba(10,40,10,0.98); border: 3px solid #0f0; border-radius: 12px;
+            padding: 24px; max-width: 900px; width: 100%; max-height: 90vh; overflow: auto;
+            color: #0f0; text-align: center;
+        }
+        .modal-box h2 { color: #ff0; margin-top: 0; }
+        .score-table {
+            width: 100%; border-collapse: collapse; margin: 16px auto; font-size: 13px;
+        }
+        .score-table th, .score-table td {
+            border: 1px solid #0f0; padding: 8px 10px; text-align: center;
+        }
+        .score-table th { background: #1a0033; color: #ff0; }
+        .score-table .total-row { background: rgba(0,80,0,0.5); font-weight: bold; color: #ff0; }
+        .score-table .loser { color: #ef5350; }
+        .score-table .winner { color: #81c784; }
+        .ranking-list { text-align: left; max-width: 400px; margin: 16px auto; font-size: 16px; }
+        .ranking-list li { margin: 8px 0; }
     </style>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
@@ -151,6 +175,8 @@
                 <div class="room-info">Code de la salle : <strong id="room-code-display"></strong></div>
                 <div id="qrcode"></div>
                 <p style="font-size:12px;">Scannez le QR ou partagez le lien pour rejoindre</p>
+                <button type="button" id="btn-share-link" onclick="shareJoinLink()" style="margin:10px 0; border-color:#0ff; color:#0ff;">📤 Partager le lien</button>
+                <p id="share-feedback" style="font-size:12px;color:#81c784;display:none;"></p>
                 <div class="waiting-list" id="waiting-players"></div>
                 <button id="start-remote-btn" style="display:none;" onclick="startRemoteGame()">Lancer la partie</button>
             </div>
@@ -189,8 +215,32 @@
         
         <div class="log" id="log"></div>
         <div style="margin: 20px auto; display: flex; justify-content: center; gap: 12px; flex-wrap: wrap;">
-            <button id="btn-nouvelle-partie" onclick="nouvellePartie()">Nouvelle Partie</button>
+            <button id="btn-nouvelle-manche" onclick="nouvelleManche()">Nouvelle Manche</button>
+            <button id="btn-scores" onclick="openScoreModal()">Scores</button>
+            <button id="btn-share-ingame" onclick="shareJoinLink()" style="border-color:#0ff; color:#0ff; display:none;">📤 Partager</button>
             <button id="btn-accueil" onclick="goHome()" style="border-color:#ff0; color:#ff0;">Accueil</button>
+        </div>
+    </div>
+
+    <!-- Modal Scores (suivi des manches) -->
+    <div id="score-modal" class="modal-overlay" onclick="if(event.target===this) closeScoreModal()">
+        <div class="modal-box">
+            <h2>Tableau des scores</h2>
+            <p style="font-size:12px;color:#aaa;">Premier joueur à atteindre 100 points perd — le plus bas score gagne</p>
+            <div id="score-table-container"></div>
+            <button onclick="closeScoreModal()">Revenir à la partie en cours</button>
+        </div>
+    </div>
+
+    <!-- Modal Fin de partie -->
+    <div id="gameover-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h2 id="gameover-title">Fin de partie</h2>
+            <div id="gameover-content"></div>
+            <div style="margin-top:20px; display:flex; gap:12px; justify-content:center; flex-wrap:wrap;">
+                <button onclick="nouvellePartieComplete()">Nouvelle Partie</button>
+                <button onclick="goHomeFromGameOver()" style="border-color:#ff0; color:#ff0;">Accueil</button>
+            </div>
         </div>
     </div>
 
@@ -226,6 +276,11 @@
         let logMessages = [];
         let clientId = null;
         let playerMeta = []; // [{name, clientId, joinedAt}, ...] préserve les IDs entre syncs
+        // Suivi multi-manches
+        let roundHistory = []; // [ { scores: [n1, n2, ...], totals: [...] }, ... ] scores de chaque manche
+        let cumulativeTotals = []; // total par joueur
+        let gameOver = false;
+        const SCORE_LIMIT = 100;
 
         // --- Persistance session (survit au refresh) ---
         function getOrCreateClientId() {
@@ -321,6 +376,7 @@
                 showQRCode();
                 listenRoom();
                 updateWaitingList([{ name }]);
+                updateShareButtonVisibility();
             }).catch(err => {
                 alert('Erreur Firebase : ' + err.message);
             });
@@ -438,7 +494,92 @@
             }
         }
 
+        function getJoinUrl() {
+            if (!roomId) return null;
+            let base = window.location.href.split('?')[0].split('#')[0];
+            // file:// ne produit pas un lien partageable utile
+            if (base.indexOf('file:') === 0) {
+                return null;
+            }
+            return base + '?room=' + encodeURIComponent(roomId);
+        }
+
+        function shareJoinLink() {
+            if (!roomId) {
+                alert('Aucune salle active.');
+                return;
+            }
+            const url = getJoinUrl();
+            const textMsg = 'Rejoins ma partie Skyjo ! Code salle : ' + roomId + (url ? ('\n' + url) : '');
+
+            const feedback = document.getElementById('share-feedback');
+            const showFb = (msg) => {
+                if (feedback) {
+                    feedback.style.display = 'block';
+                    feedback.textContent = msg;
+                    setTimeout(() => { feedback.style.display = 'none'; }, 2500);
+                }
+            };
+
+            // API Web Share (mobile)
+            if (navigator.share && url) {
+                navigator.share({
+                    title: 'Skyjo — Partie ' + roomId,
+                    text: 'Rejoins ma partie Skyjo ! Code : ' + roomId,
+                    url: url
+                }).then(() => showFb('Lien partagé !')).catch(() => {
+                    copyJoinLink(url || textMsg, showFb);
+                });
+                return;
+            }
+
+            // Sinon copier dans le presse-papiers
+            if (url) {
+                copyJoinLink(url, showFb);
+            } else {
+                // Fichier local : on copie au moins le code
+                copyJoinLink(roomId, (msg) => {
+                    showFb('Code copié : ' + roomId + ' (ouvre le même fichier HTML et entre ce code)');
+                    alert('Tu es en fichier local : le lien web n\'est pas disponible.\nCode salle copié : ' + roomId + '\nL\'autre joueur ouvre le même HTML → Mode Distant → entre le code.');
+                });
+            }
+        }
+
+        function copyJoinLink(value, showFb) {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(value).then(() => {
+                    if (showFb) showFb('Lien copié dans le presse-papiers !');
+                    else alert('Lien copié :\n' + value);
+                }).catch(() => fallbackCopy(value, showFb));
+            } else {
+                fallbackCopy(value, showFb);
+            }
+        }
+
+        function fallbackCopy(value, showFb) {
+            const ta = document.createElement('textarea');
+            ta.value = value;
+            ta.style.position = 'fixed';
+            ta.style.left = '-9999px';
+            document.body.appendChild(ta);
+            ta.select();
+            try {
+                document.execCommand('copy');
+                if (showFb) showFb('Lien copié dans le presse-papiers !');
+                else alert('Lien copié :\n' + value);
+            } catch (e) {
+                prompt('Copie ce lien :', value);
+            }
+            document.body.removeChild(ta);
+        }
+
+        function updateShareButtonVisibility() {
+            const btn = document.getElementById('btn-share-ingame');
+            if (btn) btn.style.display = (isRemoteMode && roomId) ? 'inline-block' : 'none';
+        }
+
         function listenRoom() {
+
             remoteRef = db.ref('skyjo/' + roomId);
             remoteRef.on('value', snap => {
                 const data = snap.val();
@@ -494,6 +635,9 @@
                 mustReveal = false;
                 finishingPlayer = -1;
                 logMessages = ['=== Partie distante démarrée ==='];
+                roundHistory = [];
+                cumulativeTotals = players.map(() => 0);
+                gameOver = false;
 
                 pushFullState('playing');
             });
@@ -524,7 +668,10 @@
                 selectedFromDiscard,
                 mustReveal,
                 finishingPlayer,
-                logMessages: logMessages.slice(-40)
+                logMessages: logMessages.slice(-40),
+                roundHistory,
+                cumulativeTotals,
+                gameOver
             };
             remoteRef.update(state);
         }
@@ -562,6 +709,9 @@
                 mustReveal = !!data.mustReveal;
                 finishingPlayer = data.finishingPlayer ?? -1;
                 logMessages = data.logMessages || [];
+                roundHistory = data.roundHistory || [];
+                cumulativeTotals = data.cumulativeTotals || [];
+                gameOver = !!data.gameOver;
 
                 if (document.getElementById('setup-screen').style.display !== 'none') {
                     document.getElementById('setup-screen').style.display = 'none';
@@ -575,6 +725,12 @@
                 updatePhase();
                 renderAll();
                 updateTurnLockUI();
+                updateShareButtonVisibility();
+                if (gameOver) {
+                    showGameOverModal();
+                } else {
+                    closeGameOverModal();
+                }
             } finally {
                 applyingRemote = false;
             }
@@ -666,6 +822,11 @@
             mustReveal = false;
             finishingPlayer = -1;
             logMessages = [];
+            roundHistory = [];
+            cumulativeTotals = [];
+            gameOver = false;
+            closeGameOverModal();
+            closeScoreModal();
             
             updatePhase();
             renderAll();
@@ -1003,29 +1164,58 @@
                 if (!(revealed[i] instanceof Set)) revealed[i] = new Set(revealed[i] || []);
                 for(let j=0; j<12; j++) revealed[i].add(j); 
             });
-            renderAll();
-            
-            let scores = players.map((n,i) => {
+
+            // Calcul des scores de la manche (ordre des joueurs, pas trié)
+            const roundScores = players.map((n, i) => {
                 let score = 0;
                 const clr = cleared[i] instanceof Set ? cleared[i] : new Set(cleared[i] || []);
-                for(let j=0; j<12; j++) if (!clr.has(j)) score += grids[i][j];
-                return {name: n, score};
-            }).sort((a,b) => a.score - b.score);
-            
-            scores.forEach(s => log(`${s.name} : ${s.score} points`));
-            log("<strong>Partie terminée !</strong>");
-            if (isRemoteMode) pushFullState('ended');
+                for (let j = 0; j < 12; j++) if (!clr.has(j)) score += grids[i][j];
+                return score;
+            });
+
+            // Initialiser cumulatifs si besoin
+            if (!cumulativeTotals.length || cumulativeTotals.length !== players.length) {
+                cumulativeTotals = players.map(() => 0);
+            }
+            cumulativeTotals = cumulativeTotals.map((t, i) => t + roundScores[i]);
+            roundHistory.push({ scores: roundScores.slice() });
+
+            roundScores.forEach((sc, i) => {
+                log(`${players[i]} : ${sc} pts (total : ${cumulativeTotals[i]})`);
+            });
+
+            // Premier à 100+ perd → fin de partie
+            const someoneLost = cumulativeTotals.some(t => t >= SCORE_LIMIT);
+            if (someoneLost) {
+                gameOver = true;
+                log("<strong>Un joueur a atteint " + SCORE_LIMIT + " points — Fin de partie !</strong>");
+                renderAll();
+                if (isRemoteMode) pushFullState('ended');
+                showGameOverModal();
+            } else {
+                gameOver = false;
+                log("<strong>Manche terminée — cliquez sur Nouvelle Manche pour continuer</strong>");
+                renderAll();
+                if (isRemoteMode) pushFullState('ended');
+            }
         }
 
-        // === Nouvelle partie (mêmes joueurs, même salle) ===
-        function nouvellePartie() {
+        // === Nouvelle manche (mêmes joueurs, scores conservés) ===
+        function nouvelleManche() {
+            if (gameOver) {
+                alert('La partie est terminée. Utilisez « Nouvelle Partie » dans l\'écran de fin, ou consultez les Scores.');
+                openScoreModal();
+                return;
+            }
+            if (phase !== 'ended') {
+                alert('La manche n\'est pas encore terminée.');
+                return;
+            }
             if (isRemoteMode) {
-                // Seul l'hôte relance ; les autres voient l'état via Firebase
                 if (!isHost && myPlayerIndex !== 0) {
-                    alert("Seul l'hôte peut relancer une nouvelle partie. Demande-lui de cliquer sur Nouvelle Partie.");
+                    alert("Seul l'hôte peut lancer une nouvelle manche.");
                     return;
                 }
-                // Relancer avec les mêmes joueurs (playerMeta déjà connu)
                 if (!playerMeta.length && players.length) {
                     playerMeta = players.map((n, i) => ({
                         name: n,
@@ -1034,48 +1224,31 @@
                     }));
                 }
                 if (players.length < 2) {
-                    alert('Pas assez de joueurs pour relancer');
+                    alert('Pas assez de joueurs');
                     return;
                 }
-                createDeck();
-                grids = [];
-                revealed = [];
-                cleared = [];
-                for (let i = 0; i < players.length; i++) {
-                    grids.push(Array.from({ length: 12 }, () => deck.pop()));
-                    revealed.push([]);
-                    cleared.push([]);
-                }
-                discardPile = [deck.pop()];
-                phase = 'initialReveal';
-                currentPlayerIndex = 0;
-                selectedCard = null;
-                selectedFromDiscard = false;
-                mustReveal = false;
-                finishingPlayer = -1;
-                logMessages = ['=== Nouvelle partie (même salle) ==='];
-                document.getElementById('log').innerHTML = '';
+                _startNewRoundState('=== Nouvelle manche ===');
                 pushFullState('playing');
-                // applyRemoteState sera déclenché par le listener, mais on force aussi localement
                 updatePhase();
                 renderAll();
                 return;
             }
+            // Local / solo
+            _startNewRoundState('=== Nouvelle manche ===');
+            updatePhase();
+            renderAll();
+            if (isSoloMode && currentPlayerIndex === 1) setTimeout(aiInitialReveal, 600);
+        }
 
-            // Mode local / solo : relancer avec les mêmes joueurs
-            const samePlayers = players.slice();
-            const wasSolo = isSoloMode;
-            const savedAi = aiLevel;
-
+        function _startNewRoundState(logTitle) {
             createDeck();
             grids = [];
             revealed = [];
             cleared = [];
-            players = samePlayers;
             for (let i = 0; i < players.length; i++) {
                 grids.push(Array.from({ length: 12 }, () => deck.pop()));
-                revealed.push(new Set());
-                cleared.push(new Set());
+                revealed.push(isRemoteMode ? [] : new Set());
+                cleared.push(isRemoteMode ? [] : new Set());
             }
             discardPile = [deck.pop()];
             phase = 'initialReveal';
@@ -1084,16 +1257,129 @@
             selectedFromDiscard = false;
             mustReveal = false;
             finishingPlayer = -1;
-            logMessages = [];
+            logMessages = [logTitle || '=== Nouvelle manche ==='];
             document.getElementById('log').innerHTML = '';
-            isSoloMode = wasSolo;
-            aiLevel = savedAi;
+            lastVibratedTurnKey = null;
+        }
+
+        // Nouvelle partie complète = reset des scores + nouvelle manche
+        function nouvellePartieComplete() {
+            closeGameOverModal();
+            if (isRemoteMode && !isHost && myPlayerIndex !== 0) {
+                alert("Seul l'hôte peut lancer une nouvelle partie.");
+                return;
+            }
+            roundHistory = [];
+            cumulativeTotals = players.map(() => 0);
+            gameOver = false;
+            _startNewRoundState('=== Nouvelle partie (scores remis à zéro) ===');
+            if (isRemoteMode) {
+                pushFullState('playing');
+            }
             updatePhase();
             renderAll();
             if (isSoloMode && currentPlayerIndex === 1) setTimeout(aiInitialReveal, 600);
         }
 
-        // === Retour à l'accueil (quitte la partie / la salle) ===
+        function openScoreModal() {
+            renderScoreTable();
+            document.getElementById('score-modal').classList.add('visible');
+        }
+        function closeScoreModal() {
+            document.getElementById('score-modal').classList.remove('visible');
+        }
+        function closeGameOverModal() {
+            const el = document.getElementById('gameover-modal');
+            if (el) el.classList.remove('visible');
+        }
+
+        function renderScoreTable() {
+            const container = document.getElementById('score-table-container');
+            if (!players.length) {
+                container.innerHTML = '<p>Aucun score pour le moment.</p>';
+                return;
+            }
+            const totals = (cumulativeTotals.length === players.length)
+                ? cumulativeTotals
+                : players.map(() => 0);
+
+            let html = '<table class="score-table"><thead><tr><th>Joueur</th>';
+            for (let r = 0; r < roundHistory.length; r++) {
+                html += '<th>M' + (r + 1) + '</th>';
+            }
+            html += '<th>Total</th></tr></thead><tbody>';
+
+            // Ligne totaux en en-tête visuel déjà dans Total
+            players.forEach((name, i) => {
+                const tot = totals[i] || 0;
+                const cls = tot >= SCORE_LIMIT ? ' class="loser"' : '';
+                html += '<tr' + cls + '><td>' + name + '</td>';
+                roundHistory.forEach(round => {
+                    const sc = (round.scores && round.scores[i] != null) ? round.scores[i] : '—';
+                    html += '<td>' + sc + '</td>';
+                });
+                html += '<td><strong>' + tot + '</strong></td></tr>';
+            });
+
+            // Ligne totaux par manche (somme des scores de la manche) optionnelle — plutôt ligne récap
+            html += '<tr class="total-row"><td>Total cumulé</td>';
+            roundHistory.forEach(() => { html += '<td></td>'; });
+            html += '<td>' + totals.reduce((a, b) => a + b, 0) + '</td></tr>';
+            html += '</tbody></table>';
+
+            if (!roundHistory.length) {
+                html = '<p style="font-size:13px;">Aucune manche terminée pour l\'instant.</p>' + html;
+            }
+            container.innerHTML = html;
+        }
+
+        function showGameOverModal() {
+            // Classement : plus bas score = gagnant
+            const ranking = players.map((n, i) => ({
+                name: n,
+                total: (cumulativeTotals[i] != null ? cumulativeTotals[i] : 0)
+            })).sort((a, b) => a.total - b.total);
+
+            const winner = ranking[0];
+            let html = '<p style="font-size:20px;color:#81c784;">🏆 Gagnant : <strong>' + winner.name + '</strong> (' + winner.total + ' pts)</p>';
+            html += '<ol class="ranking-list">';
+            ranking.forEach((p, idx) => {
+                const medal = idx === 0 ? '🥇' : (idx === 1 ? '🥈' : (idx === 2 ? '🥉' : (idx + 1) + '.'));
+                const loserMark = p.total >= SCORE_LIMIT ? ' <span class="loser">(≥100)</span>' : '';
+                html += '<li>' + medal + ' ' + p.name + ' — <strong>' + p.total + '</strong> pts' + loserMark + '</li>';
+            });
+            html += '</ol>';
+            html += '<div style="margin-top:12px;">' + buildScoreTableHtml() + '</div>';
+
+            document.getElementById('gameover-title').textContent = 'Fin de partie';
+            document.getElementById('gameover-content').innerHTML = html;
+            document.getElementById('gameover-modal').classList.add('visible');
+        }
+
+        function buildScoreTableHtml() {
+            if (!players.length) return '';
+            const totals = (cumulativeTotals.length === players.length) ? cumulativeTotals : players.map(() => 0);
+            let html = '<table class="score-table"><thead><tr><th>Joueur</th>';
+            for (let r = 0; r < roundHistory.length; r++) html += '<th>M' + (r + 1) + '</th>';
+            html += '<th>Total</th></tr></thead><tbody>';
+            players.forEach((name, i) => {
+                html += '<tr><td>' + name + '</td>';
+                roundHistory.forEach(round => {
+                    const sc = (round.scores && round.scores[i] != null) ? round.scores[i] : '—';
+                    html += '<td>' + sc + '</td>';
+                });
+                html += '<td><strong>' + (totals[i] || 0) + '</strong></td></tr>';
+            });
+            html += '</tbody></table>';
+            return html;
+        }
+
+        function goHomeFromGameOver() {
+            closeGameOverModal();
+            goHome();
+        }
+
+        // === Retour à l (quitte la partie / la salle) ===
         function goHome() {
             if (isRemoteMode) {
                 // Optionnel : marquer la salle comme abandonnée si on est hôte
@@ -1129,6 +1415,11 @@
             finishingPlayer = -1;
             logMessages = [];
             isSoloMode = false;
+            roundHistory = [];
+            cumulativeTotals = [];
+            gameOver = false;
+            closeGameOverModal();
+            closeScoreModal();
 
             document.getElementById('log').innerHTML = '';
             document.getElementById('game-screen').style.display = 'none';
