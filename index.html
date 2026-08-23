@@ -1282,11 +1282,17 @@
 
         // Nouvelle partie complète = reset des scores + nouvelle manche
         function nouvellePartieComplete() {
-            closeGameOverModal();
             if (isRemoteMode && !isHost && myPlayerIndex !== 0) {
                 alert("Seul l'hôte peut lancer une nouvelle partie.");
                 return;
             }
+            const ok = confirm(
+                "Es-tu sûr de vouloir recommencer une partie depuis le début ?\n\n" +
+                "Les scores de toutes les manches seront effacés et remis à zéro."
+            );
+            if (!ok) return;
+
+            closeGameOverModal();
             roundHistory = [];
             cumulativeTotals = players.map(() => 0);
             gameOver = false;
@@ -1389,12 +1395,21 @@
         }
 
         function goHomeFromGameOver() {
-            closeGameOverModal();
             goHome();
         }
 
-        // === Retour à l (quitte la partie / la salle) ===
+        // === Retour à l'accueil (quitte la partie / la salle) ===
         function goHome() {
+            const ok = confirm(
+                "Es-tu sûr de vouloir retourner à l'accueil ?\n\n" +
+                "Cette action mettra fin à la partie en cours." +
+                (isRemoteMode ? "\nEn mode distant, tu quitteras aussi la salle." : "")
+            );
+            if (!ok) return;
+
+            closeGameOverModal();
+            closeScoreModal();
+
             if (isRemoteMode) {
                 // Optionnel : marquer la salle comme abandonnée si on est hôte
                 if (remoteRef && isHost) {
