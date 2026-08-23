@@ -166,6 +166,7 @@
                     <option value="1">Facile</option>
                     <option value="2" selected>Moyen</option>
                     <option value="3">Difficile</option>
+                    <option value="4">Expert</option>
                 </select>
             </label>
         </div>
@@ -248,6 +249,18 @@
         </div>
     </div>
 
+    <!-- Modal Fin de manche -->
+    <div id="roundend-modal" class="modal-overlay">
+        <div class="modal-box">
+            <h2>Fin de manche</h2>
+            <div id="roundend-content"></div>
+            <div style="margin-top:20px; display:flex; gap:12px; justify-content:center; flex-wrap:wrap;">
+                <button onclick="nouvelleMancheFromModal()">Nouvelle Manche</button>
+                <button onclick="goHome()" style="border-color:#ff0; color:#ff0;">Accueil</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal Fin de partie -->
     <div id="gameover-modal" class="modal-overlay">
         <div class="modal-box">
@@ -297,6 +310,8 @@
         let cumulativeTotals = []; // total par joueur
         let gameOver = false;
         const SCORE_LIMIT = 100;
+        let lastRoundSummary = null; // { scores, baseScores, penalty, totals, roundNum }
+
 
         // --- Persistance session (survit au refresh) ---
         function getOrCreateClientId() {
@@ -693,7 +708,8 @@
                 logMessages: logMessages.slice(-40),
                 roundHistory,
                 cumulativeTotals,
-                gameOver
+                gameOver,
+                lastRoundSummary
             };
             remoteRef.update(state);
         }
@@ -734,6 +750,7 @@
                 roundHistory = data.roundHistory || [];
                 cumulativeTotals = data.cumulativeTotals || [];
                 gameOver = !!data.gameOver;
+                lastRoundSummary = data.lastRoundSummary || null;
 
                 if (document.getElementById('setup-screen').style.display !== 'none') {
                     document.getElementById('setup-screen').style.display = 'none';
@@ -757,9 +774,15 @@
                 updateTurnLockUI();
                 updateShareButtonVisibility();
                 if (gameOver) {
+                    closeRoundEndModal();
                     showGameOverModal();
                 } else {
                     closeGameOverModal();
+                    if (phase === 'ended' && lastRoundSummary) {
+                        showRoundEndModal();
+                    } else {
+                        closeRoundEndModal();
+                    }
                 }
             } finally {
                 applyingRemote = false;
@@ -855,8 +878,10 @@
             roundHistory = [];
             cumulativeTotals = [];
             gameOver = false;
+            lastRoundSummary = null;
             closeGameOverModal();
             closeScoreModal();
+            closeRoundEndModal();
             
             updatePhase();
             renderAll();
@@ -1227,20 +1252,20 @@
             });
 
             // Calcul des scores de base de la manche (cartes restantes non éliminées)
-            const roundScores = players.map((n, i) => {
+            const baseScores = players.map((n, i) => {
                 let score = 0;
                 const clr = cleared[i] instanceof Set ? cleared[i] : new Set(cleared[i] || []);
                 for (let j = 0; j < 12; j++) if (!clr.has(j)) score += grids[i][j];
                 return score;
             });
+            const roundScores = baseScores.slice();
+            let penaltyInfo = null;
 
-            // Pénalité du joueur qui a terminé en premier :
-            // s'il n'a PAS strictement le plus bas score (score >= celui d'un autre joueur),
-            // il ajoute la somme de ses points positifs (cartes > 0 encore sur son plateau).
+            // Pénalité du joueur qui a terminé en premier
             if (finishingPlayer >= 0 && finishingPlayer < players.length) {
-                const finisherScore = roundScores[finishingPlayer];
+                const finisherScore = baseScores[finishingPlayer];
                 const notStrictlyLowest = players.some((_, i) =>
-                    i !== finishingPlayer && finisherScore >= roundScores[i]
+                    i !== finishingPlayer && finisherScore >= baseScores[i]
                 );
                 if (notStrictlyLowest) {
                     const clr = cleared[finishingPlayer] instanceof Set
@@ -1254,6 +1279,13 @@
                     }
                     if (positiveSum > 0) {
                         roundScores[finishingPlayer] += positiveSum;
+                        penaltyInfo = {
+                            playerIndex: finishingPlayer,
+                            playerName: players[finishingPlayer],
+                            amount: positiveSum,
+                            baseScore: baseScores[finishingPlayer],
+                            finalScore: roundScores[finishingPlayer]
+                        };
                         log("⚠️ Pénalité pour " + players[finishingPlayer] +
                             " (terminé 1er sans le meilleur score) : +" + positiveSum +
                             " pts (somme des cartes positives)");
@@ -1267,35 +1299,45 @@
                 }
             }
 
-            // Initialiser cumulatifs si besoin
             if (!cumulativeTotals.length || cumulativeTotals.length !== players.length) {
                 cumulativeTotals = players.map(() => 0);
             }
             cumulativeTotals = cumulativeTotals.map((t, i) => t + roundScores[i]);
             roundHistory.push({ scores: roundScores.slice() });
 
+            lastRoundSummary = {
+                scores: roundScores.slice(),
+                baseScores: baseScores.slice(),
+                penalty: penaltyInfo,
+                totals: cumulativeTotals.slice(),
+                roundNum: roundHistory.length,
+                playerNames: players.slice()
+            };
+
             roundScores.forEach((sc, i) => {
                 log(`${players[i]} : ${sc} pts (total : ${cumulativeTotals[i]})`);
             });
 
-            // Premier à 100+ perd → fin de partie
             const someoneLost = cumulativeTotals.some(t => t >= SCORE_LIMIT);
             if (someoneLost) {
                 gameOver = true;
                 log("<strong>Un joueur a atteint " + SCORE_LIMIT + " points — Fin de partie !</strong>");
                 renderAll();
                 if (isRemoteMode) pushFullState('ended');
+                closeRoundEndModal();
                 showGameOverModal();
             } else {
                 gameOver = false;
-                log("<strong>Manche terminée — cliquez sur Nouvelle Manche pour continuer</strong>");
+                log("<strong>Manche terminée</strong>");
                 renderAll();
                 if (isRemoteMode) pushFullState('ended');
+                showRoundEndModal();
             }
         }
 
         // === Nouvelle manche (mêmes joueurs, scores conservés) ===
         function nouvelleManche() {
+            closeRoundEndModal();
             if (gameOver) {
                 alert('La partie est terminée. Utilisez « Nouvelle Partie » dans l\'écran de fin, ou consultez les Scores.');
                 openScoreModal();
@@ -1372,6 +1414,8 @@
             roundHistory = [];
             cumulativeTotals = players.map(() => 0);
             gameOver = false;
+            lastRoundSummary = null;
+            closeRoundEndModal();
             _startNewRoundState('=== Nouvelle partie (scores remis à zéro) ===');
             if (isRemoteMode) {
                 pushFullState('playing');
@@ -1427,6 +1471,51 @@
                 html = '<p style="font-size:13px;">Aucune manche terminée pour l\'instant.</p>' + html;
             }
             container.innerHTML = html;
+        }
+
+        function showRoundEndModal() {
+            if (!lastRoundSummary) return;
+            const s = lastRoundSummary;
+            const names = s.playerNames || players;
+            let html = '<p style="font-size:14px;color:#ff0;">Manche ' + s.roundNum + '</p>';
+
+            if (s.penalty) {
+                html += '<p style="color:#ef5350;font-size:13px;margin:10px 0;">⚠️ Pénalité : <strong>' +
+                    s.penalty.playerName + '</strong> +' + s.penalty.amount +
+                    ' pts<br><span style="font-size:11px;color:#aaa;">(terminé 1er sans le meilleur score — base ' +
+                    s.penalty.baseScore + ' → ' + s.penalty.finalScore + ')</span></p>';
+            } else {
+                html += '<p style="color:#81c784;font-size:13px;">Aucune pénalité ce tour</p>';
+            }
+
+            html += '<table class="score-table"><thead><tr><th>Joueur</th><th>Score manche</th><th>Total</th></tr></thead><tbody>';
+            names.forEach((name, i) => {
+                const base = s.baseScores ? s.baseScores[i] : s.scores[i];
+                const final = s.scores[i];
+                const tot = s.totals[i];
+                let mancheCell = String(final);
+                if (s.penalty && s.penalty.playerIndex === i && s.penalty.amount > 0) {
+                    mancheCell = base + ' <span style="color:#ef5350;">(+' + s.penalty.amount + ')</span> = <strong>' + final + '</strong>';
+                } else {
+                    mancheCell = '<strong>' + final + '</strong>';
+                }
+                html += '<tr><td>' + name + '</td><td>' + mancheCell + '</td><td><strong>' + tot + '</strong></td></tr>';
+            });
+            html += '</tbody></table>';
+            html += '<p style="font-size:11px;color:#888;margin-top:8px;">Objectif : rester sous 100 pts — le plus bas score gagne</p>';
+
+            document.getElementById('roundend-content').innerHTML = html;
+            document.getElementById('roundend-modal').classList.add('visible');
+        }
+
+        function closeRoundEndModal() {
+            const el = document.getElementById('roundend-modal');
+            if (el) el.classList.remove('visible');
+        }
+
+        function nouvelleMancheFromModal() {
+            closeRoundEndModal();
+            nouvelleManche();
         }
 
         function showGameOverModal() {
@@ -1486,6 +1575,7 @@
             closeGameOverModal();
             closeScoreModal();
             closeLogModal();
+            closeRoundEndModal();
 
             if (isRemoteMode) {
                 // Optionnel : marquer la salle comme abandonnée si on est hôte
@@ -1612,8 +1702,15 @@
         function aiPlay() {
             if (phase !== "playing" || players[currentPlayerIndex] !== "IA") return;
 
+            const thinkDelay = aiLevel >= 4 ? 350 : (aiLevel === 3 ? 450 : 600);
+            const moveDelay = aiLevel >= 4 ? 280 : (aiLevel === 3 ? 400 : 700);
+
             setTimeout(() => {
                 if (deck.length === 0) reshuffleDiscardIntoDeck();
+                if (deck.length === 0 && discardPile.length <= 1) {
+                    nextPlayer();
+                    return;
+                }
 
                 const discardValue = discardPile.length ? discardPile[discardPile.length - 1] : null;
                 let selected = null;
@@ -1624,6 +1721,7 @@
                     fromDiscard = true;
                     log(`IA (${getAiName()}) prend la défausse (${selected})`);
                 } else {
+                    if (deck.length === 0) reshuffleDiscardIntoDeck();
                     selected = deck.pop();
                     fromDiscard = false;
                     log(`IA (${getAiName()}) pioche`);
@@ -1633,49 +1731,104 @@
 
                 setTimeout(() => {
                     makeBestMove(selected, fromDiscard);
-                }, aiLevel === 3 ? 500 : 700);
+                }, moveDelay);
 
-            }, 600);
+            }, thinkDelay);
         }
 
         function getAiName() {
-            return aiLevel === 1 ? "Facile" : aiLevel === 2 ? "Moyen" : "Difficile";
+            return { 1: "Facile", 2: "Moyen", 3: "Difficile", 4: "Expert" }[aiLevel] || "IA";
+        }
+
+        function aiEnsureSets() {
+            if (!(revealed[1] instanceof Set)) revealed[1] = new Set(revealed[1] || []);
+            if (!(cleared[1] instanceof Set)) cleared[1] = new Set(cleared[1] || []);
         }
 
         function shouldTakeDiscard(value) {
-            let highestVisible = -99;
-            if (!(revealed[1] instanceof Set)) revealed[1] = new Set(revealed[1] || []);
-            if (!(cleared[1] instanceof Set)) cleared[1] = new Set(cleared[1] || []);
+            aiEnsureSets();
+            // Seuils : plus le niveau est haut, plus l'IA accepte des cartes basses utiles
+            let bestReplaceGain = -99;
             for (let i = 0; i < 12; i++) {
-                if (!cleared[1].has(i) && revealed[1].has(i)) {
-                    highestVisible = Math.max(highestVisible, grids[1][i]);
+                if (cleared[1].has(i)) continue;
+                if (revealed[1].has(i)) {
+                    bestReplaceGain = Math.max(bestReplaceGain, grids[1][i] - value);
                 }
             }
-            return value < highestVisible - (aiLevel === 3 ? 2 : 0);
+            // Bonus colonne
+            let colBonus = 0;
+            for (let c = 0; c < 4; c++) {
+                const positions = [c, c + 4, c + 8];
+                let matches = 0;
+                for (const p of positions) {
+                    if (!cleared[1].has(p) && revealed[1].has(p) && grids[1][p] === value) matches++;
+                }
+                if (matches >= 1) colBonus = Math.max(colBonus, matches);
+            }
+
+            if (aiLevel >= 4) {
+                // Expert : prend si gain net, carte très basse, ou construction colonne
+                if (value <= 2) return true;
+                if (colBonus >= 1 && value <= 8) return true;
+                return bestReplaceGain >= 3 || (bestReplaceGain >= 1 && value <= 5);
+            }
+            if (aiLevel === 3) {
+                if (value <= 1) return true;
+                if (colBonus >= 1 && value <= 6) return true;
+                return bestReplaceGain >= 4;
+            }
+            if (aiLevel === 2) {
+                return bestReplaceGain >= 3 || (value <= 0 && bestReplaceGain >= 0);
+            }
+            // Facile
+            return bestReplaceGain >= 5;
         }
 
         function makeBestMove(newCard, fromDiscard) {
+            aiEnsureSets();
             let bestPos = -1;
             let bestScore = -Infinity;
 
-            if (!(revealed[1] instanceof Set)) revealed[1] = new Set(revealed[1] || []);
-            if (!(cleared[1] instanceof Set)) cleared[1] = new Set(cleared[1] || []);
-
             for (let pos = 0; pos < 12; pos++) {
                 if (cleared[1].has(pos)) continue;
-                let score = evaluateMove(pos, newCard);
+                const score = evaluateMove(pos, newCard);
                 if (score > bestScore) {
                     bestScore = score;
                     bestPos = pos;
                 }
             }
 
-            if (bestScore < 0 || (aiLevel === 1 && Math.random() < 0.4)) {
+            // Seuil d'échange : Difficile/Expert plus agressifs pour baisser le score
+            let threshold = 0;
+            if (aiLevel === 1) threshold = 2;
+            else if (aiLevel === 2) threshold = 0;
+            else if (aiLevel === 3) threshold = -1; // accepte même un léger "neutre" si colonne
+            else threshold = -2; // Expert très agressif
+
+            const forceRandomMiss = (aiLevel === 1 && Math.random() < 0.35);
+
+            // Carte de la défausse : doit être échangée (règle du jeu)
+            if (fromDiscard) {
+                if (bestPos < 0) bestPos = 0;
+                while (bestPos < 12 && cleared[1].has(bestPos)) bestPos++;
+                if (bestPos >= 12) {
+                    // ne devrait pas arriver
+                    discardPile.push(newCard);
+                    nextPlayer();
+                    return;
+                }
+                const old = grids[1][bestPos];
+                grids[1][bestPos] = newCard;
+                discardPile.push(old);
+                revealed[1].add(bestPos);
+                log(`IA (${getAiName()}) échange ${old} → ${newCard}`);
+            } else if (forceRandomMiss || bestScore < threshold || bestPos < 0) {
                 discardPile.push(newCard);
                 log(`IA (${getAiName()}) défausse et retourne une carte`);
-                let target = chooseRevealPosition();
+                const target = chooseRevealPosition();
                 if (target !== -1) {
                     revealed[1].add(target);
+                    log(`IA (${getAiName()}) révèle : ${grids[1][target]}`);
                 }
             } else {
                 const old = grids[1][bestPos];
@@ -1691,37 +1844,107 @@
         }
 
         function evaluateMove(pos, newCard) {
+            aiEnsureSets();
             const old = grids[1][pos];
-            let score = old - newCard;
+            const isRevealed = revealed[1].has(pos);
+            // Gain immédiat : remplacer une carte haute par une basse
+            // Sur carte cachée, on estime une valeur moyenne (~5) sauf Expert qui est plus prudent
+            let estimatedOld = old;
+            if (!isRevealed) {
+                estimatedOld = (aiLevel >= 4) ? 6 : (aiLevel === 3 ? 5 : 4);
+            }
+            let score = estimatedOld - newCard;
 
+            // Bonus fort pour remplacer une carte visible haute
+            if (isRevealed && old >= 8) score += (aiLevel >= 3 ? 4 : 2);
+            if (isRevealed && old >= 10) score += (aiLevel >= 4 ? 3 : 1);
+
+            // Colonnes
             if (aiLevel >= 2) {
                 const col = pos % 4;
-                const colPositions = [col, col+4, col+8];
+                const colPositions = [col, col + 4, col + 8];
                 let sameCount = 0;
+                let knownOther = 0;
                 let potential = 0;
-
-                for (let p of colPositions) {
+                for (const p of colPositions) {
                     if (p === pos) continue;
+                    if (cleared[1].has(p)) continue;
                     if (revealed[1].has(p)) {
+                        knownOther++;
                         if (grids[1][p] === newCard) sameCount++;
+                        else score -= (aiLevel >= 4 ? 6 : 3); // casse une colonne différente
                     } else {
                         potential++;
                     }
                 }
-                score += sameCount * 25 + potential * 8;
+                // Compléter une colonne = très fort
+                if (sameCount === 2) score += (aiLevel >= 4 ? 60 : 40);
+                else if (sameCount === 1) score += (aiLevel >= 4 ? 28 : 20);
+                else if (potential > 0 && aiLevel >= 3) score += potential * (aiLevel >= 4 ? 6 : 4);
             }
+
+            // Expert : préfère échanger sur cases déjà révélées pour progresser / finir
+            if (aiLevel >= 4 && isRevealed) score += 1.5;
+            // Difficile+ : moins d'intérêt à garder des 0/-1 cachés longtemps — favoriser révélation via échange
+            if (aiLevel >= 3 && !isRevealed && newCard <= 2) score += 2;
+
             return score;
         }
 
         function chooseRevealPosition() {
-            let candidates = [];
+            aiEnsureSets();
+            const candidates = [];
             for (let i = 0; i < 12; i++) {
-                if (!revealed[1].has(i) && !cleared[1].has(i)) {
-                    candidates.push(i);
-                }
+                if (!revealed[1].has(i) && !cleared[1].has(i)) candidates.push(i);
             }
             if (candidates.length === 0) return -1;
-            return candidates[Math.floor(Math.random() * candidates.length)];
+
+            // Facile / Moyen : aléatoire
+            if (aiLevel <= 2) {
+                return candidates[Math.floor(Math.random() * candidates.length)];
+            }
+
+            // Difficile / Expert : prioriser colonnes prometteuses + finir le plateau
+            let best = candidates[0];
+            let bestScore = -Infinity;
+            const hiddenCount = candidates.length;
+
+            for (const pos of candidates) {
+                let s = 0;
+                const col = pos % 4;
+                const colPositions = [col, col + 4, col + 8];
+                let revealedInCol = [];
+                let hiddenInCol = 0;
+                for (const p of colPositions) {
+                    if (cleared[1].has(p)) continue;
+                    if (p === pos) { hiddenInCol++; continue; }
+                    if (revealed[1].has(p)) revealedInCol.push(grids[1][p]);
+                    else hiddenInCol++;
+                }
+                // Si 2 cartes identiques déjà visibles → révéler la 3e pour tenter colonne
+                if (revealedInCol.length === 2 && revealedInCol[0] === revealedInCol[1]) {
+                    s += (aiLevel >= 4 ? 50 : 35);
+                } else if (revealedInCol.length === 1) {
+                    s += (aiLevel >= 4 ? 12 : 8);
+                }
+                // Expert : accélère la révélation quand il reste peu de cartes cachées
+                if (aiLevel >= 4) {
+                    if (hiddenCount <= 4) s += 20;
+                    else if (hiddenCount <= 6) s += 10;
+                    // Légère préférence colonnes avec déjà du visible
+                    s += revealedInCol.length * 3;
+                } else if (aiLevel === 3) {
+                    if (hiddenCount <= 3) s += 12;
+                    s += revealedInCol.length * 2;
+                }
+                // Petit bruit pour éviter toujours le même choix
+                s += Math.random() * 2;
+                if (s > bestScore) {
+                    bestScore = s;
+                    best = pos;
+                }
+            }
+            return best;
         }
 
         function checkUrlRoom() {
