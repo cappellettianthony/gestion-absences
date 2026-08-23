@@ -1041,12 +1041,19 @@
         }
 
         function reshuffleDiscardIntoDeck() {
-            if (discardPile.length <= 1) return false;
-            const topCard = discardPile.pop();
-            deck = discardPile;
+            // Règle officielle Skyjo :
+            // Pioche vide → on reprend toute la défausse SAUF la carte du dessus
+            // (qui reste visible), on mélange le reste pour reformer la pioche.
+            if (discardPile.length <= 1) {
+                log("⚠️ Impossible de reformer la pioche (pas assez de cartes en défausse)");
+                return false;
+            }
+            const topCard = discardPile.pop(); // reste visible en défausse
+            const rest = discardPile.slice();  // copie des autres cartes
+            shuffle(rest);
+            deck = rest;
             discardPile = [topCard];
-            shuffle(deck);
-            log("🔄 Pioche vide → Défausse mélangée");
+            log("🔄 Pioche vide → défausse mélangée (" + deck.length + " cartes). Carte du dessus conservée : " + topCard);
             return true;
         }
 
@@ -1054,7 +1061,12 @@
             if (phase !== 'playing' || selectedCard !== null || phase === 'ended') return;
             if (!canInteract()) return;
             if (players[currentPlayerIndex] === "IA") return;
-            if (deck.length === 0) if (!reshuffleDiscardIntoDeck()) return;
+            if (deck.length === 0) {
+                if (!reshuffleDiscardIntoDeck()) {
+                    log("❌ Aucune carte à piocher");
+                    return;
+                }
+            }
             selectedCard = deck.pop();
             selectedFromDiscard = false;
             log(`Tu as pioché : ${selectedCard}`);
@@ -1327,10 +1339,6 @@
                 html += '<td><strong>' + tot + '</strong></td></tr>';
             });
 
-            // Ligne totaux par manche (somme des scores de la manche) optionnelle — plutôt ligne récap
-            html += '<tr class="total-row"><td>Total cumulé</td>';
-            roundHistory.forEach(() => { html += '<td></td>'; });
-            html += '<td>' + totals.reduce((a, b) => a + b, 0) + '</td></tr>';
             html += '</tbody></table>';
 
             if (!roundHistory.length) {
