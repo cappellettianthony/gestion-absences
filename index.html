@@ -112,16 +112,10 @@
         #qrcode { margin: 15px auto; background: #fff; padding: 10px; display: inline-block; border-radius: 8px; }
         .room-info { font-size: 14px; margin: 10px 0; color: #ff0; }
         .waiting-list { text-align: left; max-width: 400px; margin: 10px auto; }
-        .status-badge { display: inline-block; padding: 4px 10px; border-radius: 6px; font-size: 12px; margin-left: 8px; }
-        .status-waiting { background: #ff8800; color: #000; }
-        .status-playing { background: #0f0; color: #000; }
-        .locked-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); pointer-events: none; z-index: 5; display: none; }
         .locked-msg { position: fixed; top: 80px; left: 50%; transform: translateX(-50%); background: #220044; border: 3px solid #ff0; padding: 12px 24px; z-index: 10; font-size: 16px; display: none; }
     </style>
-    <!-- Firebase -->
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-    <!-- QR Code -->
     <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 </head>
 <body>
@@ -199,7 +193,6 @@
     </div>
 
     <script>
-        // ========== FIREBASE ==========
         const firebaseConfig = {
             apiKey: "AIzaSyDsG680YVSR2DGxCjPoQSBpVq-seGhAwyQ",
             authDomain: "gestion-absences-b1af6.firebaseapp.com",
@@ -212,7 +205,6 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
 
-        // ========== ÉTAT LOCAL ==========
         let players = [], currentPlayerIndex = 0;
         let deck = [], discardPile = [];
         let grids = [], revealed = [], cleared = [];
@@ -225,10 +217,10 @@
         let isRemoteMode = false;
         let aiLevel = 2;
         let roomId = null;
-        let myPlayerIndex = -1;   // index du joueur local dans la partie distante
+        let myPlayerIndex = -1;
         let isHost = false;
         let remoteRef = null;
-        let applyingRemote = false; // évite les boucles de sync
+        let applyingRemote = false;
         let logMessages = [];
 
         function createDeck() {
@@ -261,7 +253,6 @@
             document.getElementById('start-local-btn').style.display = mode === 'distant' ? 'none' : 'inline-block';
         }
 
-        // ========== MODE DISTANT ==========
         function generateRoomCode() {
             const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
             let code = '';
@@ -339,7 +330,6 @@
                 if (!err) qrDiv.appendChild(canvas);
                 else qrDiv.innerHTML = '<p style="color:#f00">QR erreur</p><p style="font-size:11px;word-break:break-all">' + url + '</p>';
             });
-            // Also show link
             const link = document.createElement('p');
             link.style.fontSize = '11px';
             link.style.wordBreak = 'break-all';
@@ -407,7 +397,7 @@
             if (!isRemoteMode || !remoteRef) return;
             const state = {
                 status: status || 'playing',
-                players: players.map((n, i) => ({ name: n })),
+                players: players.map((n) => ({ name: n })),
                 deck,
                 discardPile,
                 grids,
@@ -432,7 +422,6 @@
                 deck = data.deck || [];
                 discardPile = data.discardPile || [];
                 grids = data.grids || [];
-                // Sets from arrays
                 revealed = (data.revealed || []).map(arr => new Set(arr || []));
                 cleared = (data.cleared || []).map(arr => new Set(arr || []));
                 phase = data.phase || 'playing';
@@ -443,13 +432,11 @@
                 finishingPlayer = data.finishingPlayer ?? -1;
                 logMessages = data.logMessages || [];
 
-                // Afficher l'écran de jeu si on est encore sur setup
                 if (document.getElementById('setup-screen').style.display !== 'none') {
                     document.getElementById('setup-screen').style.display = 'none';
                     document.getElementById('game-screen').style.display = 'block';
                 }
 
-                // Reconstruire le log
                 const logEl = document.getElementById('log');
                 logEl.innerHTML = logMessages.map(m => '<div>' + m + '</div>').join('');
                 logEl.scrollTop = logEl.scrollHeight;
@@ -478,7 +465,6 @@
             }
         }
 
-        // ========== DÉMARRAGE LOCAL ==========
         function startGame() {
             const mode = document.querySelector('input[name="mode"]:checked').value;
             isSoloMode = mode === 'solo';
@@ -564,7 +550,6 @@
                         cardEl.textContent = '';
                     }
                     
-                    // Interaction uniquement si c'est mon tour (ou mode local non-IA)
                     const isMyTurn = !isRemoteMode ? (idx === currentPlayerIndex && name !== "IA") : (idx === myPlayerIndex && canInteract());
                     if (isMyTurn && !clr.has(pos) && phase !== 'ended') {
                         cardEl.onclick = () => cardClicked(idx, pos);
@@ -583,7 +568,6 @@
             const canAct = canInteract() && phase === 'playing';
             defausserBtn.disabled = !canAct || (selectedCard === null && !mustReveal) || (players[currentPlayerIndex] === "IA");
             
-            // Désactiver pioche / défausse visuellement
             const deckCard = document.getElementById('deck-card');
             const discardEl = document.getElementById('discard-card');
             if (deckCard) {
@@ -606,7 +590,6 @@
             }
             if (cleared[playerIdx] instanceof Set ? cleared[playerIdx].has(pos) : (cleared[playerIdx]||[]).includes(pos)) return;
             
-            // Normaliser en Set
             if (!(revealed[playerIdx] instanceof Set)) revealed[playerIdx] = new Set(revealed[playerIdx] || []);
             if (!(cleared[playerIdx] instanceof Set)) cleared[playerIdx] = new Set(cleared[playerIdx] || []);
             
@@ -887,7 +870,6 @@
             document.getElementById('name-inputs').innerHTML = html;
         }
 
-        // IA
         function aiInitialReveal() {
             if (phase !== 'initialReveal') return;
             
@@ -1019,7 +1001,6 @@
             return candidates[Math.floor(Math.random() * candidates.length)];
         }
 
-        // Auto-join si ?room= dans l'URL
         function checkUrlRoom() {
             const params = new URLSearchParams(window.location.search);
             const r = params.get('room');
