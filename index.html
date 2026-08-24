@@ -1004,9 +1004,12 @@
             } 
             else if (mustReveal && !revealed[playerIdx].has(pos)) {
                 revealed[playerIdx].add(pos);
-                log(`Tu retournes : ${grids[playerIdx][pos]} — tour terminé`);
+                log(`Tu retournes : ${grids[playerIdx][pos]}`);
                 mustReveal = false;
+                // Colonne de 3 identiques possible après un simple retournement
+                checkColumns(playerIdx);
                 renderAll();
+                log(`Tour terminé`);
                 nextPlayer();
             } else if (mustReveal && revealed[playerIdx].has(pos)) {
                 log("❌ Choisis une carte encore face cachée.");
