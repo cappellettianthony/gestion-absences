@@ -101,6 +101,29 @@
             border-color: #00ffff;
         }
         .player-area { position: relative; }
+        .player-score {
+            margin-top: 12px;
+            padding: 8px 10px;
+            border: 2px solid #0f0;
+            border-radius: 8px;
+            background: rgba(0,0,0,0.45);
+            font-size: 13px;
+            color: #0f0;
+            text-align: center;
+            line-height: 1.45;
+        }
+        .player-score .manche-score {
+            color: #ff0;
+            font-size: 16px;
+        }
+        .player-score .total-score {
+            color: #81c784;
+            font-size: 12px;
+        }
+        .player-score .hidden-hint {
+            color: #888;
+            font-size: 10px;
+        }
         .mood-overlay {
             position: absolute;
             inset: 0;
@@ -1234,6 +1257,28 @@
             vibrateOnMyTurn();
         }
 
+        function computePlayerRoundScore(pIdx) {
+            const rev = revealed[pIdx] instanceof Set ? revealed[pIdx] : new Set(revealed[pIdx] || []);
+            const clr = cleared[pIdx] instanceof Set ? cleared[pIdx] : new Set(cleared[pIdx] || []);
+            let visible = 0;
+            let hiddenSum = 0;
+            let hiddenCount = 0;
+            const grid = grids[pIdx] || [];
+            for (let j = 0; j < grid.length; j++) {
+                if (clr.has(j)) continue;
+                if (rev.has(j) || phase === 'ended') {
+                    visible += grid[j];
+                } else {
+                    hiddenSum += grid[j];
+                    hiddenCount++;
+                }
+            }
+            // Score "actuel" de la manche = toutes les cartes encore en jeu (visibles + cachées)
+            // comme à la fin de manche (hors pénalité)
+            const total = visible + hiddenSum;
+            return { total, visible, hiddenSum, hiddenCount };
+        }
+
         function renderAll() {
             const container = document.getElementById('players-container');
             container.innerHTML = '';
@@ -1280,6 +1325,28 @@
                 });
                 area.appendChild(gridEl);
                 area.dataset.playerIdx = String(idx);
+
+                // Score actuel de la manche (mis à jour à chaque render / mouvement)
+                const scoreEl = document.createElement('div');
+                scoreEl.className = 'player-score';
+                const sc = computePlayerRoundScore(idx);
+                let scoreHtml = '<span class="manche-score">Manche : ' + sc.total + '</span>';
+                scoreHtml += '<br><span class="hidden-hint">visibles : ' + sc.visible +
+                    (sc.hiddenCount > 0 ? ' · cachées : ' + sc.hiddenCount : '') + '</span>';
+                if (cumulativeTotals && cumulativeTotals.length === players.length) {
+                    const grand = (cumulativeTotals[idx] || 0) + (phase === 'ended' ? 0 : 0);
+                    // Pendant la manche : total des manches passées + score courant de la manche en cours
+                    // cumulativeTotals n'inclut la manche en cours qu'après endRound
+                    const totalAffiche = (phase === 'ended')
+                        ? (cumulativeTotals[idx] || 0)
+                        : ((cumulativeTotals[idx] || 0) + sc.total);
+                    scoreHtml += '<br><span class="total-score">Total partie : ' + totalAffiche + '</span>';
+                } else {
+                    scoreHtml += '<br><span class="total-score">Total partie : ' + sc.total + '</span>';
+                }
+                scoreEl.innerHTML = scoreHtml;
+                area.appendChild(scoreEl);
+
                 const moodSlot = document.createElement('div');
                 moodSlot.className = 'mood-slot';
                 moodSlot.id = 'mood-slot-' + idx;
