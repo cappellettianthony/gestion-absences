@@ -322,6 +322,7 @@
             <button id="btn-nouvelle-manche" onclick="nouvelleManche()">Nouvelle Manche</button>
             <button id="btn-scores" onclick="openScoreModal()">Scores</button>
             <button id="btn-logs" onclick="openLogModal()">Logs</button>
+            <button id="btn-sound-toggle" onclick="toggleTurnSound()" style="border-color:#0ff; color:#0ff;">🔊 Son : OFF</button>
             <button id="btn-share-ingame" onclick="shareJoinLink()" style="border-color:#0ff; color:#0ff; display:none;">📤 Partager</button>
             <button id="btn-accueil" onclick="goHome()" style="border-color:#ff0; color:#ff0;">Accueil</button>
         </div>
@@ -894,32 +895,95 @@
             return myPlayerIndex === currentPlayerIndex;
         }
 
-        // Vibration au début de ton tour (mobile)
+        // Vibration + son de cloche au début du tour
         let lastVibratedTurnKey = null;
-        function vibrateOnMyTurn() {
-            if (phase === 'ended') return;
-            // En distant : uniquement si c'est mon tour
-            // En local : vibration à chaque changement de joueur (sauf IA)
-            let shouldVibrate = false;
-            if (isRemoteMode) {
-                shouldVibrate = (myPlayerIndex === currentPlayerIndex);
-            } else {
-                shouldVibrate = (players[currentPlayerIndex] !== 'IA');
-            }
-            if (!shouldVibrate) return;
+        let turnSoundEnabled = localStorage.getItem('skyjo_turnSound') === '1';
+        let audioCtx = null;
 
-            const key = roomId + '|' + phase + '|' + currentPlayerIndex + '|' + (logMessages.length || 0);
-            // Évite de re-vibrer à chaque re-render du même tour
+        function updateSoundButtonLabel() {
+            const btn = document.getElementById('btn-sound-toggle');
+            if (!btn) return;
+            if (turnSoundEnabled) {
+                btn.textContent = '🔔 Son : ON';
+                btn.style.borderColor = '#0f0';
+                btn.style.color = '#0f0';
+            } else {
+                btn.textContent = '🔊 Son : OFF';
+                btn.style.borderColor = '#0ff';
+                btn.style.color = '#0ff';
+            }
+        }
+
+        function toggleTurnSound() {
+            turnSoundEnabled = !turnSoundEnabled;
+            localStorage.setItem('skyjo_turnSound', turnSoundEnabled ? '1' : '0');
+            updateSoundButtonLabel();
+            // Débloquer l'AudioContext sur geste utilisateur + aperçu
+            if (turnSoundEnabled) {
+                playTurnBell(true);
+            }
+        }
+
+        function playTurnBell(preview) {
+            try {
+                const Ctx = window.AudioContext || window.webkitAudioContext;
+                if (!Ctx) return;
+                if (!audioCtx) audioCtx = new Ctx();
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+
+                const now = audioCtx.currentTime;
+                // Double tintement type cloche
+                function ding(freq, start, dur, gainVal) {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(freq, start);
+                    osc.frequency.exponentialRampToValueAtTime(freq * 0.7, start + dur);
+                    gain.gain.setValueAtTime(0.0001, start);
+                    gain.gain.exponentialRampToValueAtTime(gainVal, start + 0.02);
+                    gain.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(start);
+                    osc.stop(start + dur + 0.05);
+                }
+                ding(880, now, 0.35, preview ? 0.12 : 0.18);
+                ding(1320, now + 0.12, 0.4, preview ? 0.08 : 0.12);
+            } catch (e) {}
+        }
+
+        function notifyMyTurn() {
+            if (phase === 'ended') return;
+
+            let isMyTurn = false;
+            if (isRemoteMode) {
+                isMyTurn = (myPlayerIndex === currentPlayerIndex);
+            } else {
+                isMyTurn = (players[currentPlayerIndex] !== 'IA');
+            }
+            if (!isMyTurn) return;
+
+            // Une seule notif par tour
             const turnKey = (roomId || 'local') + ':' + phase + ':' + currentPlayerIndex;
             if (lastVibratedTurnKey === turnKey) return;
             lastVibratedTurnKey = turnKey;
 
+            // Vibration (mobile)
             try {
                 if (navigator.vibrate) {
-                    // pattern : court - pause - court (notification de tour)
-                    navigator.vibrate([80, 40, 80]);
+                    navigator.vibrate([100, 50, 100]);
                 }
             } catch (e) {}
+
+            // Son de cloche si activé
+            if (turnSoundEnabled) {
+                playTurnBell(false);
+            }
+        }
+
+        // Alias pour appels existants
+        function vibrateOnMyTurn() {
+            notifyMyTurn();
         }
 
         function sendMoodEmoji(emoji) {
@@ -1019,6 +1083,7 @@
             
             document.getElementById('setup-screen').style.display = 'none';
             document.getElementById('game-screen').style.display = 'block';
+            updateSoundButtonLabel();
             
             phase = 'initialReveal';
             currentPlayerIndex = 0;
@@ -2192,6 +2257,7 @@
             updateNameInputs();
             checkUrlRoom();
             tryReconnectSession();
+            updateSoundButtonLabel();
         };
     </script>
 </body>
