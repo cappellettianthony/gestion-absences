@@ -448,6 +448,116 @@
             localStorage.removeItem('skyjo_session');
         }
 
+        function setsToArrays(arrOfSets) {
+            return (arrOfSets || []).map(s => Array.isArray(s) ? s : Array.from(s || []));
+        }
+        function arraysToSets(arr) {
+            return (arr || []).map(a => new Set(a || []));
+        }
+
+        function saveLocalGameState() {
+            if (isRemoteMode) return; // distant = Firebase
+            if (!players.length || phase === undefined) return;
+            if (document.getElementById('game-screen').style.display === 'none') return;
+            try {
+                const payload = {
+                    isSoloMode,
+                    aiLevel,
+                    players,
+                    grids,
+                    revealed: setsToArrays(revealed),
+                    cleared: setsToArrays(cleared),
+                    deck,
+                    discardPile,
+                    phase,
+                    currentPlayerIndex,
+                    selectedCard,
+                    selectedFromDiscard,
+                    mustReveal,
+                    finishingPlayer,
+                    logMessages: (logMessages || []).slice(-40),
+                    roundHistory,
+                    cumulativeTotals,
+                    gameOver,
+                    lastRoundSummary,
+                    turnNotifySerial
+                };
+                localStorage.setItem('skyjo_local_game', JSON.stringify(payload));
+            } catch (e) {}
+        }
+
+        function clearLocalGameState() {
+            localStorage.removeItem('skyjo_local_game');
+        }
+
+        function loadLocalGameState() {
+            try {
+                const raw = localStorage.getItem('skyjo_local_game');
+                if (!raw) return null;
+                return JSON.parse(raw);
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function restoreLocalGame() {
+            const data = loadLocalGameState();
+            if (!data || !data.players || !data.players.length) return false;
+            if (data.phase === 'ended' && data.gameOver) {
+                // on peut quand même restaurer pour voir scores
+            }
+            isRemoteMode = false;
+            isSoloMode = !!data.isSoloMode;
+            aiLevel = data.aiLevel || 2;
+            players = data.players;
+            grids = data.grids || [];
+            revealed = arraysToSets(data.revealed);
+            cleared = arraysToSets(data.cleared);
+            deck = data.deck || [];
+            discardPile = data.discardPile || [];
+            phase = data.phase || 'playing';
+            currentPlayerIndex = data.currentPlayerIndex || 0;
+            selectedCard = data.selectedCard ?? null;
+            selectedFromDiscard = !!data.selectedFromDiscard;
+            mustReveal = !!data.mustReveal;
+            finishingPlayer = data.finishingPlayer ?? -1;
+            logMessages = data.logMessages || [];
+            roundHistory = data.roundHistory || [];
+            cumulativeTotals = data.cumulativeTotals || [];
+            gameOver = !!data.gameOver;
+            lastRoundSummary = data.lastRoundSummary || null;
+            turnNotifySerial = data.turnNotifySerial || 0;
+            lastVibratedTurnKey = null;
+
+            document.getElementById('setup-screen').style.display = 'none';
+            document.getElementById('game-screen').style.display = 'block';
+            updateSoundButtonLabel();
+
+            const logEl = document.getElementById('log');
+            if (logEl) {
+                logEl.innerHTML = logMessages.map(m => '<div>' + m + '</div>').join('');
+            }
+
+            updatePhase();
+            renderAll();
+            updateTurnLockUI();
+
+            if (gameOver) {
+                showGameOverModal();
+            } else if (phase === 'ended' && lastRoundSummary) {
+                showRoundEndModal();
+            }
+
+            // Reprendre le tour IA si besoin
+            if (isSoloMode && phase === 'playing' && players[currentPlayerIndex] === 'IA') {
+                setTimeout(aiPlay, 700);
+            } else if (isSoloMode && phase === 'initialReveal' && players[currentPlayerIndex] === 'IA') {
+                setTimeout(aiInitialReveal, 600);
+            }
+            return true;
+        }
+
+
         function createDeck() {
             // Composition officielle Skyjo (150 cartes)
             // -2 × 5 | -1 × 10 | 0 × 15 | 1 à 12 × 10 chacune
@@ -840,8 +950,13 @@
                 grids = data.grids || [];
                 revealed = (data.revealed || []).map(arr => new Set(arr || []));
                 cleared = (data.cleared || []).map(arr => new Set(arr || []));
+                const prevPhase = phase;
+                const prevIdx = currentPlayerIndex;
                 phase = data.phase || 'playing';
                 currentPlayerIndex = data.currentPlayerIndex ?? 0;
+                if (prevIdx !== currentPlayerIndex || prevPhase !== phase) {
+                    bumpTurnNotify();
+                }
                 selectedCard = data.selectedCard ?? null;
                 selectedFromDiscard = !!data.selectedFromDiscard;
                 mustReveal = !!data.mustReveal;
@@ -897,6 +1012,7 @@
 
         // Vibration + son de cloche au début du tour
         let lastVibratedTurnKey = null;
+        let turnNotifySerial = 0; // incrémente à chaque changement de tour → notif à chaque tour
         let turnSoundEnabled = localStorage.getItem('skyjo_turnSound') === '1';
         let audioCtx = null;
 
@@ -963,22 +1079,25 @@
             }
             if (!isMyTurn) return;
 
-            // Une seule notif par tour
-            const turnKey = (roomId || 'local') + ':' + phase + ':' + currentPlayerIndex;
+            // Clé unique par tour (serial change à chaque nextPlayer)
+            const turnKey = (roomId || 'local') + ':' + phase + ':' + currentPlayerIndex + ':' + turnNotifySerial;
             if (lastVibratedTurnKey === turnKey) return;
             lastVibratedTurnKey = turnKey;
 
-            // Vibration (mobile)
             try {
                 if (navigator.vibrate) {
                     navigator.vibrate([100, 50, 100]);
                 }
             } catch (e) {}
 
-            // Son de cloche si activé
             if (turnSoundEnabled) {
                 playTurnBell(false);
             }
+        }
+
+        function bumpTurnNotify() {
+            turnNotifySerial++;
+            lastVibratedTurnKey = null; // autorise une nouvelle notif
         }
 
         // Alias pour appels existants
@@ -1055,6 +1174,7 @@
             isSoloMode = mode === 'solo';
             isRemoteMode = false;
             clearSession();
+            clearLocalGameState();
             if (remoteRef) { try { remoteRef.off(); } catch(e){} remoteRef = null; }
             
             if (isSoloMode) {
@@ -1189,6 +1309,7 @@
                 discardEl.style.pointerEvents = canDrawOrTake ? 'auto' : 'none';
             }
             updateTurnLockUI();
+            saveLocalGameState();
         }
 
         function cardClicked(playerIdx, pos) {
@@ -1264,6 +1385,7 @@
         }
 
         function nextInitialPlayer() {
+            bumpTurnNotify();
             currentPlayerIndex = (currentPlayerIndex + 1) % players.length;
             
             if (players.every((_, i) => {
@@ -1314,6 +1436,7 @@
             }
 
             currentPlayerIndex = bestPlayer;
+            bumpTurnNotify();
             log(`<strong>${players[bestPlayer]} commence ! (score ${bestScore})</strong>`);
             
             updatePhase();
@@ -1437,6 +1560,7 @@
         }
 
         function nextPlayer() {
+            bumpTurnNotify();
             if (
                 finishingPlayer === -1 &&
                 (() => {
@@ -1826,6 +1950,7 @@
                 isHost = false;
                 playerMeta = [];
             }
+            clearLocalGameState();
 
             // Reset état jeu
             players = [];
@@ -2256,8 +2381,15 @@
         window.onload = function() {
             updateNameInputs();
             checkUrlRoom();
-            tryReconnectSession();
             updateSoundButtonLabel();
+            // Distant d'abord, sinon restauration partie locale / solo
+            const params = new URLSearchParams(window.location.search);
+            const hasRoom = !!(params.get('room') || (loadSession() && loadSession().roomId));
+            if (hasRoom) {
+                tryReconnectSession();
+            } else {
+                restoreLocalGame();
+            }
         };
     </script>
 </body>
