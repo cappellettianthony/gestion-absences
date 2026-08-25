@@ -1140,31 +1140,65 @@
             }
             showMoodOnPlayer(idx, emoji);
             if (isRemoteMode && remoteRef) {
+                const ts = Date.now();
+                lastMoodTs = ts; // éviter double affichage via le listener
                 remoteRef.child('moodReaction').set({
                     playerIndex: idx,
                     emoji: emoji,
-                    ts: Date.now()
-                }).catch(function() {});
+                    ts: ts
+                }).catch(function(err) {
+                    console.warn('moodReaction write failed', err);
+                });
             }
         }
 
+        // Mémoire des emojis actifs pour survivre au re-render (surtout en distant)
+        let activeMoods = {}; // playerIndex -> { emoji, until }
+
         function showMoodOnPlayer(playerIndex, emoji) {
-            const area = document.querySelector('.player-area[data-player-idx="' + playerIndex + '"]');
-            if (!area) return;
+            playerIndex = parseInt(playerIndex, 10);
+            if (isNaN(playerIndex) || playerIndex < 0) return;
+            const until = Date.now() + 3000;
+            activeMoods[playerIndex] = { emoji: emoji, until: until };
+
             if (moodTimers[playerIndex]) {
                 clearTimeout(moodTimers[playerIndex]);
-                delete moodTimers[playerIndex];
             }
+            moodTimers[playerIndex] = setTimeout(function() {
+                delete activeMoods[playerIndex];
+                delete moodTimers[playerIndex];
+                const area = document.querySelector('.player-area[data-player-idx="' + playerIndex + '"]');
+                if (area) {
+                    const old = area.querySelector('.mood-overlay');
+                    if (old) old.remove();
+                }
+            }, 3000);
+
+            paintMoodOverlay(playerIndex, emoji);
+        }
+
+        function paintMoodOverlay(playerIndex, emoji) {
+            const area = document.querySelector('.player-area[data-player-idx="' + playerIndex + '"]');
+            if (!area) return;
             const old = area.querySelector('.mood-overlay');
             if (old) old.remove();
             const overlay = document.createElement('div');
             overlay.className = 'mood-overlay';
             overlay.textContent = emoji;
             area.appendChild(overlay);
-            moodTimers[playerIndex] = setTimeout(function() {
-                if (overlay.parentNode) overlay.remove();
-                delete moodTimers[playerIndex];
-            }, 3000);
+        }
+
+        function reapplyMoodOverlays() {
+            const now = Date.now();
+            Object.keys(activeMoods).forEach(function(k) {
+                const idx = parseInt(k, 10);
+                const m = activeMoods[k];
+                if (!m || m.until <= now) {
+                    delete activeMoods[k];
+                    return;
+                }
+                paintMoodOverlay(idx, m.emoji);
+            });
         }
 
         function listenMoodReactions() {
@@ -1175,8 +1209,9 @@
                 if (!data || !data.emoji) return;
                 if (data.ts && data.ts === lastMoodTs) return;
                 lastMoodTs = data.ts || Date.now();
-                if (typeof data.playerIndex === 'number' && data.playerIndex >= 0) {
-                    showMoodOnPlayer(data.playerIndex, data.emoji);
+                const idx = parseInt(data.playerIndex, 10);
+                if (!isNaN(idx) && idx >= 0) {
+                    showMoodOnPlayer(idx, data.emoji);
                 }
             });
         }
@@ -1261,22 +1296,19 @@
             const rev = revealed[pIdx] instanceof Set ? revealed[pIdx] : new Set(revealed[pIdx] || []);
             const clr = cleared[pIdx] instanceof Set ? cleared[pIdx] : new Set(cleared[pIdx] || []);
             let visible = 0;
-            let hiddenSum = 0;
             let hiddenCount = 0;
             const grid = grids[pIdx] || [];
             for (let j = 0; j < grid.length; j++) {
                 if (clr.has(j)) continue;
+                // En fin de manche tout est visible ; sinon uniquement les cartes retournées
                 if (rev.has(j) || phase === 'ended') {
                     visible += grid[j];
                 } else {
-                    hiddenSum += grid[j];
                     hiddenCount++;
                 }
             }
-            // Score "actuel" de la manche = toutes les cartes encore en jeu (visibles + cachées)
-            // comme à la fin de manche (hors pénalité)
-            const total = visible + hiddenSum;
-            return { total, visible, hiddenSum, hiddenCount };
+            // Ne compte PAS les cartes face cachée
+            return { visible, hiddenCount };
         }
 
         function renderAll() {
@@ -1330,19 +1362,13 @@
                 const scoreEl = document.createElement('div');
                 scoreEl.className = 'player-score';
                 const sc = computePlayerRoundScore(idx);
-                let scoreHtml = '<span class="manche-score">Manche : ' + sc.total + '</span>';
-                scoreHtml += '<br><span class="hidden-hint">visibles : ' + sc.visible +
-                    (sc.hiddenCount > 0 ? ' · cachées : ' + sc.hiddenCount : '') + '</span>';
+                let scoreHtml = '<span class="manche-score">Score visible : ' + sc.visible + '</span>';
+                if (sc.hiddenCount > 0) {
+                    scoreHtml += '<br><span class="hidden-hint">' + sc.hiddenCount + ' carte(s) face cachée (non comptées)</span>';
+                }
                 if (cumulativeTotals && cumulativeTotals.length === players.length) {
-                    const grand = (cumulativeTotals[idx] || 0) + (phase === 'ended' ? 0 : 0);
-                    // Pendant la manche : total des manches passées + score courant de la manche en cours
-                    // cumulativeTotals n'inclut la manche en cours qu'après endRound
-                    const totalAffiche = (phase === 'ended')
-                        ? (cumulativeTotals[idx] || 0)
-                        : ((cumulativeTotals[idx] || 0) + sc.total);
-                    scoreHtml += '<br><span class="total-score">Total partie : ' + totalAffiche + '</span>';
-                } else {
-                    scoreHtml += '<br><span class="total-score">Total partie : ' + sc.total + '</span>';
+                    // Total des manches terminées uniquement (pas les cartes cachées de la manche en cours)
+                    scoreHtml += '<br><span class="total-score">Total manches : ' + (cumulativeTotals[idx] || 0) + '</span>';
                 }
                 scoreEl.innerHTML = scoreHtml;
                 area.appendChild(scoreEl);
@@ -1376,6 +1402,7 @@
                 discardEl.style.pointerEvents = canDrawOrTake ? 'auto' : 'none';
             }
             updateTurnLockUI();
+            reapplyMoodOverlays();
             saveLocalGameState();
         }
 
