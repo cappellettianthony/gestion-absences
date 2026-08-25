@@ -63,13 +63,31 @@
         .card.v-mid     { background: #fff176 !important; color: #000 !important; }
         .card.v-high    { background: #ef5350 !important; color: #000 !important; }
         
+        #players-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: flex-start;
+            gap: 16px;
+            max-width: 1100px;
+            margin: 20px auto;
+        }
+        #players-container.many-players .player-area {
+            flex: 1 1 calc(50% - 16px);
+            max-width: calc(50% - 16px);
+            min-width: 280px;
+            margin: 0;
+            box-sizing: border-box;
+        }
         .player-area { 
             border: 4px solid #cccccc; 
             padding: 15px; 
             margin: 20px auto; 
             max-width: 520px; 
+            width: 100%;
             border-radius: 12px; 
             background: rgba(10,40,10,0.7);
+            box-sizing: border-box;
         }
         .player-area.current {
             border-color: #0f0;
@@ -81,6 +99,62 @@
         }
         .player-area.me {
             border-color: #00ffff;
+        }
+        .player-area { position: relative; }
+        .mood-overlay {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 72px;
+            pointer-events: none;
+            z-index: 20;
+            background: rgba(0,0,0,0.35);
+            border-radius: 8px;
+            animation: moodPop 0.25s ease-out;
+        }
+        @keyframes moodPop {
+            from { transform: scale(0.5); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+        #mood-banner {
+            display: none;
+            position: fixed;
+            left: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 50;
+            background: rgba(10, 20, 40, 0.92);
+            border: 3px solid #0f0;
+            border-radius: 12px;
+            padding: 10px 6px;
+            flex-direction: column;
+            gap: 6px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        #game-screen.game-active #mood-banner { display: flex; }
+        #mood-banner button.mood-btn {
+            font-size: 26px;
+            padding: 6px 8px;
+            margin: 0;
+            background: #1a0033;
+            border: 2px solid #0f0;
+            border-radius: 8px;
+            cursor: pointer;
+            line-height: 1.2;
+            min-width: 48px;
+        }
+        #mood-banner button.mood-btn:hover {
+            background: #330066;
+            transform: scale(1.08);
+        }
+        #mood-banner .mood-title {
+            font-size: 10px;
+            color: #ff0;
+            text-align: center;
+            margin-bottom: 4px;
         }
         
         .center-area {
@@ -120,14 +194,24 @@
         .locked-msg { position: fixed; top: 80px; left: 50%; transform: translateX(-50%); background: #220044; border: 3px solid #ff0; padding: 12px 24px; z-index: 10; font-size: 16px; display: none; }
 
         .modal-overlay {
-            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85);
-            z-index: 100; align-items: center; justify-content: center; padding: 20px;
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75);
+            z-index: 200; align-items: flex-start; justify-content: center;
+            padding: 12px 20px 20px; overflow-y: auto;
         }
         .modal-overlay.visible { display: flex; }
+        /* Scores, fin de manche, fin de partie : en haut, au-dessus de la zone pioche */
+        #score-modal.modal-overlay,
+        #roundend-modal.modal-overlay,
+        #gameover-modal.modal-overlay {
+            align-items: flex-start;
+            padding-top: 8px;
+        }
         .modal-box {
             background: rgba(10,40,10,0.98); border: 3px solid #0f0; border-radius: 12px;
-            padding: 24px; max-width: 900px; width: 100%; max-height: 90vh; overflow: auto;
+            padding: 20px 24px; max-width: 900px; width: 100%; max-height: 85vh; overflow: auto;
             color: #0f0; text-align: center;
+            margin-top: 0;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.8);
         }
         .modal-box h2 { color: #ff0; margin-top: 0; }
         .score-table {
@@ -151,12 +235,12 @@
     
     <div id="setup-screen" class="setup">
         <h2>Configuration</h2>
-        <label><input type="radio" name="mode" value="multi" checked onchange="toggleMode()"> Mode Multi (2-4 joueurs locaux)</label><br><br>
+        <label><input type="radio" name="mode" value="multi" checked onchange="toggleMode()"> Mode Multi (2-8 joueurs locaux)</label><br><br>
         <label><input type="radio" name="mode" value="solo" onchange="toggleMode()"> Mode Solo (contre IA)</label><br><br>
         <label><input type="radio" name="mode" value="distant" onchange="toggleMode()"> Mode Distant (en ligne via QR)</label><br><br>
         
         <div id="multi-options">
-            <label>Joueurs (2-4) : <input type="number" id="num-players" value="2" min="2" max="4" style="width:60px"></label><br><br>
+            <label>Joueurs (2-8) : <input type="number" id="num-players" value="2" min="2" max="8" style="width:60px"></label><br><br>
             <div id="name-inputs"></div>
         </div>
         
@@ -191,7 +275,20 @@
         <button id="start-local-btn" onclick="startGame()">Commencer la partie</button>
     </div>
 
-    <div id="game-screen" style="display:none;">
+    <div id="game-screen" style="display:none;" class="game-active">
+        <div id="mood-banner" aria-label="Emojis humeur">
+            <div class="mood-title">Humeur</div>
+            <button type="button" class="mood-btn" onclick="sendMoodEmoji('😀')" title="Content">😀</button>
+            <button type="button" class="mood-btn" onclick="sendMoodEmoji('😂')" title="Mort de rire">😂</button>
+            <button type="button" class="mood-btn" onclick="sendMoodEmoji('😎')" title="Cool">😎</button>
+            <button type="button" class="mood-btn" onclick="sendMoodEmoji('😮')" title="Surpris">😮</button>
+            <button type="button" class="mood-btn" onclick="sendMoodEmoji('😤')" title="Vexé">😤</button>
+            <button type="button" class="mood-btn" onclick="sendMoodEmoji('😢')" title="Triste">😢</button>
+            <button type="button" class="mood-btn" onclick="sendMoodEmoji('🔥')" title="En feu">🔥</button>
+            <button type="button" class="mood-btn" onclick="sendMoodEmoji('👍')" title="OK">👍</button>
+            <button type="button" class="mood-btn" onclick="sendMoodEmoji('👏')" title="Bravo">👏</button>
+            <button type="button" class="mood-btn" onclick="sendMoodEmoji('🤔')" title="Réfléchi">🤔</button>
+        </div>
         <div id="phase-title" style="font-size:24px;color:#ff0;margin:15px 0;"></div>
         <div id="current-player" style="font-size:22px;"></div>
         <div id="turn-lock-msg" class="locked-msg">Ce n'est pas ton tour — attends...</div>
@@ -311,6 +408,8 @@
         let gameOver = false;
         const SCORE_LIMIT = 100;
         let lastRoundSummary = null; // { scores, baseScores, penalty, totals, roundNum }
+        let moodTimers = {};
+        let lastMoodTs = 0;
 
 
         // --- Persistance session (survit au refresh) ---
@@ -461,8 +560,8 @@
                     alert('La partie a déjà commencé et tu n\'étais pas dedans');
                     return;
                 }
-                if (plist.length >= 4) {
-                    alert('Salle pleine (max 4 joueurs)');
+                if (plist.length >= 8) {
+                    alert('Salle pleine (max 8 joueurs)');
                     return;
                 }
                 const newPlayers = [...plist, { name, joinedAt: Date.now(), clientId }];
@@ -616,8 +715,8 @@
         }
 
         function listenRoom() {
-
             remoteRef = db.ref('skyjo/' + roomId);
+            listenMoodReactions();
             remoteRef.on('value', snap => {
                 const data = snap.val();
                 if (!data) return;
@@ -635,7 +734,7 @@
 
         function updateWaitingList(plist) {
             const el = document.getElementById('waiting-players');
-            el.innerHTML = '<strong>Joueurs connectés (' + plist.length + '/4) :</strong><ul>' +
+            el.innerHTML = '<strong>Joueurs connectés (' + plist.length + '/8) :</strong><ul>' +
                 plist.map((p, i) => '<li>' + (p.name || 'Joueur') + (i === 0 ? ' (hôte)' : '') + '</li>').join('') +
                 '</ul>';
         }
@@ -823,6 +922,59 @@
             } catch (e) {}
         }
 
+        function sendMoodEmoji(emoji) {
+            if (document.getElementById('game-screen').style.display === 'none') return;
+            let idx = 0;
+            if (isRemoteMode) {
+                if (myPlayerIndex < 0) return;
+                idx = myPlayerIndex;
+            } else {
+                idx = currentPlayerIndex;
+                if (players[idx] === 'IA') idx = 0;
+            }
+            showMoodOnPlayer(idx, emoji);
+            if (isRemoteMode && remoteRef) {
+                remoteRef.child('moodReaction').set({
+                    playerIndex: idx,
+                    emoji: emoji,
+                    ts: Date.now()
+                }).catch(function() {});
+            }
+        }
+
+        function showMoodOnPlayer(playerIndex, emoji) {
+            const area = document.querySelector('.player-area[data-player-idx="' + playerIndex + '"]');
+            if (!area) return;
+            if (moodTimers[playerIndex]) {
+                clearTimeout(moodTimers[playerIndex]);
+                delete moodTimers[playerIndex];
+            }
+            const old = area.querySelector('.mood-overlay');
+            if (old) old.remove();
+            const overlay = document.createElement('div');
+            overlay.className = 'mood-overlay';
+            overlay.textContent = emoji;
+            area.appendChild(overlay);
+            moodTimers[playerIndex] = setTimeout(function() {
+                if (overlay.parentNode) overlay.remove();
+                delete moodTimers[playerIndex];
+            }, 3000);
+        }
+
+        function listenMoodReactions() {
+            if (!remoteRef) return;
+            try { remoteRef.child('moodReaction').off(); } catch (e) {}
+            remoteRef.child('moodReaction').on('value', function(snap) {
+                const data = snap.val();
+                if (!data || !data.emoji) return;
+                if (data.ts && data.ts === lastMoodTs) return;
+                lastMoodTs = data.ts || Date.now();
+                if (typeof data.playerIndex === 'number' && data.playerIndex >= 0) {
+                    showMoodOnPlayer(data.playerIndex, data.emoji);
+                }
+            });
+        }
+
         function updateTurnLockUI() {
             const msg = document.getElementById('turn-lock-msg');
             if (isRemoteMode && !canInteract() && phase !== 'ended') {
@@ -848,7 +1000,7 @@
             players = isSoloMode ? ["Vous", "IA"] : [];
    
             if (!isSoloMode) {
-                const n = parseInt(document.getElementById('num-players').value) || 2;
+                const n = Math.max(2, Math.min(8, parseInt(document.getElementById('num-players').value) || 2));
                 for (let i = 0; i < n; i++) {
                     const input = document.getElementById(`p${i}`);
                     players.push((input ? input.value.trim() : '') || `Joueur ${i+1}`);
@@ -900,6 +1052,12 @@
         function renderAll() {
             const container = document.getElementById('players-container');
             container.innerHTML = '';
+            // Au-delà de 4 joueurs : disposition en 2 colonnes côte à côte
+            if (players.length > 4) {
+                container.classList.add('many-players');
+            } else {
+                container.classList.remove('many-players');
+            }
 
             players.forEach((name, idx) => {
                 const area = document.createElement('div');
@@ -936,6 +1094,11 @@
                     gridEl.appendChild(cardEl);
                 });
                 area.appendChild(gridEl);
+                area.dataset.playerIdx = String(idx);
+                const moodSlot = document.createElement('div');
+                moodSlot.className = 'mood-slot';
+                moodSlot.id = 'mood-slot-' + idx;
+                area.appendChild(moodSlot);
                 container.appendChild(area);
             });
             
@@ -1678,7 +1841,7 @@
         }
 
         function updateNameInputs() {
-            const n = Math.max(2, Math.min(4, parseInt(document.getElementById('num-players').value) || 2));
+            const n = Math.max(2, Math.min(8, parseInt(document.getElementById('num-players').value) || 2));
             let html = '';
             for (let i = 0; i < n; i++) {
                 html += `Joueur ${i+1} : <input id="p${i}" value="Joueur ${i+1}" style="margin:5px;width:180px;"><br>`;
