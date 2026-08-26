@@ -533,7 +533,7 @@
     <div id="triple-draw-modal" class="modal-overlay">
         <div class="modal-box" style="max-width:520px;">
             <h2>Triple pioche</h2>
-            <p style="font-size:13px;color:#aaa;">Clique la carte à conserver, ou « Défausse » pour tout jeter.</p>
+            <p style="font-size:13px;color:#aaa;">Clique la carte à <strong>conserver</strong> (puis échange-la avec une de ton jeu).<br>Ou « Défausse » pour tout jeter, puis <strong>retourne</strong> une carte de ton jeu.</p>
             <div id="triple-draw-cards" style="display:flex;flex-wrap:wrap;justify-content:center;gap:14px;margin:18px 0;"></div>
         </div>
     </div>
@@ -1826,16 +1826,22 @@
                 keep = drawn[keepIndex];
                 drawn.splice(keepIndex, 1);
             }
+            // Les cartes non gardées partent à la défausse
             drawn.forEach(function(c) {
                 if (!discardPiles[0]) discardPiles[0] = [];
                 discardPiles[0].push(c);
             });
             syncDiscardPileAlias();
+            actionTurnUsed = true;
+
             if (keep !== null) {
+                // Garder une carte → échange obligatoire avec une carte du plateau
+                // (visible ou cachée). selectedFromDiscard=true empêche de simple-défausser.
                 selectedCard = keep;
-                selectedFromDiscard = false;
-                actionTurnUsed = true;
-                log('Triple pioche : tu gardes ' + keep + ' — échange-la avec une carte de ton jeu.');
+                selectedFromDiscard = true;
+                mustReveal = false;
+                log('Triple pioche : tu gardes ' + keep +
+                    ' — clique une carte de ton jeu (visible ou cachée) pour l\'échanger. Ta carte part à la défausse.');
                 maybeStarAction(
                     isRemoteMode ? myPlayerIndex : currentPlayerIndex,
                     keep
@@ -1845,10 +1851,16 @@
                 if (isRemoteMode) pushFullState();
                 return;
             }
-            log('Triple pioche : toutes les cartes défaussées');
+
+            // Tout défaussé → obligation de retourner une carte face cachée de son jeu
+            selectedCard = null;
+            selectedFromDiscard = false;
+            mustReveal = true;
+            log('Triple pioche : toutes les cartes défaussées. Retourne une carte face cachée de ton jeu.');
+            updateSelectedVisual();
             renderAll();
             if (isRemoteMode) pushFullState();
-            nextPlayer();
+            // Pas de nextPlayer : le mustReveal se résout dans cardClicked
         }
 
         function playActionCard(card, idx) {
