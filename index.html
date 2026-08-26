@@ -1929,20 +1929,76 @@
         function maybeStarAction(pIdx, val) {
             if (!isActionMode()) return;
             if (val !== '★' && val !== '*') return;
-            log('⭐ Étoile révélée ! Tu peux prendre une carte Action.');
-            // Prise auto de la première face-up ou pioche
-            if (actionFaceUp.length) {
-                const card = actionFaceUp.shift();
-                refillActionRow();
-                if (!playerActions[pIdx]) playerActions[pIdx] = [];
-                playerActions[pIdx].push(card);
-                log(players[pIdx] + " reçoit Action grâce à l'étoile : " + card.name);
-            } else if (actionDeck.length) {
-                const card = actionDeck.pop();
-                if (!playerActions[pIdx]) playerActions[pIdx] = [];
-                playerActions[pIdx].push(card);
-                log(players[pIdx] + ' reçoit Action (pioche) : ' + card.name);
+
+            // Droit optionnel : prendre une Action (4 visibles ou pioche) — pas obligatoire
+            // Uniquement le joueur concerné décide (pas les autres clients en distant)
+            if (isRemoteMode && pIdx !== myPlayerIndex) {
+                log('⭐ ' + players[pIdx] + ' a placé/révélé une Étoile (droit à une Action optionnelle).');
+                return;
             }
+            if (!isRemoteMode && players[pIdx] === 'IA') {
+                // IA : prend parfois une action (niveaux moyens+)
+                if (aiLevel >= 2 && (actionFaceUp.length || actionDeck.length) && Math.random() < 0.7) {
+                    grantStarAction(pIdx, 0); // première visible ou pioche
+                } else {
+                    log('⭐ IA ignore le droit Action de l'Étoile.');
+                }
+                return;
+            }
+
+            log('⭐ Étoile ! Tu peux prendre une carte Action (optionnel).');
+            offerStarActionChoice(pIdx);
+        }
+
+        function offerStarActionChoice(pIdx) {
+            refillActionRow();
+            let msg = '⭐ Étoile placée/révélée — prendre une carte Action ?\n\n';
+            msg += '0 = Non, refuser\n';
+            actionFaceUp.forEach(function(a, i) {
+                msg += (i + 1) + ' = ' + a.name + ' (' + a.desc + ')\n';
+            });
+            const drawOpt = actionFaceUp.length + 1;
+            if (actionDeck.length > 0 || actionDiscard.length > 0) {
+                msg += drawOpt + ' = Piocher sur le dessus du paquet Action\n';
+            }
+            const choice = prompt(msg);
+            if (choice === null || String(choice).trim() === '0' || String(choice).trim() === '') {
+                log(players[pIdx] + ' refuse la carte Action de l'Étoile.');
+                if (isRemoteMode) pushFullState();
+                return;
+            }
+            const n = parseInt(choice, 10);
+            if (isNaN(n) || n < 1) {
+                log(players[pIdx] + ' refuse la carte Action de l'Étoile.');
+                return;
+            }
+            grantStarAction(pIdx, n - 1);
+        }
+
+        function grantStarAction(pIdx, optIndex) {
+            // optIndex 0..3 = face-up, >= faceUp.length = draw from deck
+            let card = null;
+            if (optIndex < actionFaceUp.length) {
+                card = actionFaceUp.splice(optIndex, 1)[0];
+                refillActionRow();
+            } else {
+                if (!actionDeck.length) refillActionRow();
+                if (!actionDeck.length && actionFaceUp.length) {
+                    card = actionFaceUp.shift();
+                    refillActionRow();
+                } else if (actionDeck.length) {
+                    card = actionDeck.pop();
+                }
+            }
+            if (!card) {
+                log('Aucune carte Action disponible.');
+                return;
+            }
+            if (!playerActions[pIdx]) playerActions[pIdx] = [];
+            playerActions[pIdx].push(card);
+            log('⭐ ' + players[pIdx] + ' prend l'Action « ' + card.name + ' » grâce à l'Étoile (jouable au prochain tour).');
+            renderActionPanel();
+            if (isRemoteMode) pushFullState();
         }
 
         function startGame() {
