@@ -1540,8 +1540,8 @@
             const hint = document.getElementById('action-hint');
             if (hint) {
                 if (actionTurnUsed) hint.textContent = 'Action du tour déjà utilisée — finis ton action de jeu si besoin.';
-                else if (pendingActionEffect) hint.textContent = 'Résous l\\'effet : ' + (pendingActionEffect.hint || pendingActionEffect.type);
-                else hint.textContent = 'Ou pioche/défausse une carte chiffre comme d\\'habitude.';
+                else if (pendingActionEffect) hint.textContent = "Résous l'effet : " + (pendingActionEffect.hint || pendingActionEffect.type);
+                else hint.textContent = "Ou pioche/défausse une carte chiffre comme d'habitude.";
             }
         }
 
@@ -1559,7 +1559,7 @@
             if (!playerActions[idx]) playerActions[idx] = [];
             playerActions[idx].push(card);
             actionTurnUsed = true;
-            log(players[idx] + ' prend l\\'Action : ' + card.name + ' (jouable au prochain tour)');
+            log(players[idx] + " prend l'Action : " + card.name + " (jouable au prochain tour)");
             renderAll();
             if (isRemoteMode) pushFullState();
             // Prendre une action = action du tour → fin de tour
@@ -1876,7 +1876,7 @@
             }
             if (eff.type === 'swap_opp') {
                 if (eff.myPos === null) {
-                    if (playerIdx !== eff.player) { log('Choisis d\\'abord une de TES cartes'); return true; }
+                    if (playerIdx !== eff.player) { log("Choisis d'abord une de TES cartes"); return true; }
                     eff.myPos = pos;
                     log('Maintenant clique une carte adverse');
                     renderAll();
@@ -1912,7 +1912,7 @@
                 refillActionRow();
                 if (!playerActions[pIdx]) playerActions[pIdx] = [];
                 playerActions[pIdx].push(card);
-                log(players[pIdx] + ' reçoit Action grâce à l\\'étoile : ' + card.name);
+                log(players[pIdx] + " reçoit Action grâce à l'étoile : " + card.name);
             } else if (actionDeck.length) {
                 const card = actionDeck.pop();
                 if (!playerActions[pIdx]) playerActions[pIdx] = [];
