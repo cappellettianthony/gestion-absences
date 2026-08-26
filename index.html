@@ -1941,7 +1941,7 @@
                 if (aiLevel >= 2 && (actionFaceUp.length || actionDeck.length) && Math.random() < 0.7) {
                     grantStarAction(pIdx, 0); // première visible ou pioche
                 } else {
-                    log('⭐ IA ignore le droit Action de l'Étoile.');
+                    log("⭐ IA ignore le droit Action de l'Étoile.");
                 }
                 return;
             }
@@ -1963,13 +1963,13 @@
             }
             const choice = prompt(msg);
             if (choice === null || String(choice).trim() === '0' || String(choice).trim() === '') {
-                log(players[pIdx] + ' refuse la carte Action de l'Étoile.');
+                log(players[pIdx] + " refuse la carte Action de l'Étoile.");
                 if (isRemoteMode) pushFullState();
                 return;
             }
             const n = parseInt(choice, 10);
             if (isNaN(n) || n < 1) {
-                log(players[pIdx] + ' refuse la carte Action de l'Étoile.');
+                log(players[pIdx] + " refuse la carte Action de l'Étoile.");
                 return;
             }
             grantStarAction(pIdx, n - 1);
@@ -1996,7 +1996,7 @@
             }
             if (!playerActions[pIdx]) playerActions[pIdx] = [];
             playerActions[pIdx].push(card);
-            log('⭐ ' + players[pIdx] + ' prend l'Action « ' + card.name + ' » grâce à l'Étoile (jouable au prochain tour).');
+            log("⭐ " + players[pIdx] + " prend l'Action « " + card.name + " » grâce à l'Étoile (jouable au prochain tour).");
             renderActionPanel();
             if (isRemoteMode) pushFullState();
         }
@@ -2096,8 +2096,12 @@
             }
             // Mode Action : Actions non jouées (+10) + bonus étoiles déjà gagnés
             if (gameRules.action) {
-                if (playerActions[pIdx]) visible += playerActions[pIdx].length * 10;
-                if (starBonuses[pIdx]) visible += starBonuses[pIdx];
+                if (playerActions[pIdx] && playerActions[pIdx].length) {
+                    visible += playerActions[pIdx].length * 10;
+                }
+                if (starBonuses && starBonuses[pIdx]) {
+                    visible += starBonuses[pIdx];
+                }
             }
             return { visible, hiddenCount };
         }
@@ -2750,15 +2754,19 @@
                 const clr = cleared[i] instanceof Set ? cleared[i] : new Set(cleared[i] || []);
                 for (let j = 0; j < 12; j++) if (!clr.has(j)) score += cardValueForScore(grids[i][j]);
                 // Mode Action — malus : cartes Action non jouées = +10 chacune
-                if (gameRules.action && playerActions[i] && playerActions[i].length) {
-                    const malus = playerActions[i].length * 10;
-                    score += malus;
-                    log(players[i] + ' : +' + malus + ' pts (Actions non jouées ×10)');
-                }
-                // Mode Action — bonus étoiles déjà obtenus en défaussant 3★/4★
-                if (gameRules.action && starBonuses[i]) {
-                    score += starBonuses[i]; // déjà négatif
-                    log(players[i] + ' : ' + starBonuses[i] + ' pts (bonus étoiles)');
+                if (gameRules.action) {
+                    const actionsHeld = (playerActions[i] && playerActions[i].length) ? playerActions[i].length : 0;
+                    if (actionsHeld > 0) {
+                        const malus = actionsHeld * 10;
+                        score += malus;
+                        log(players[i] + ' : +' + malus + ' pts (Actions non jouées ×10)');
+                    }
+                    // Mode Action — bonus étoiles (3★ → −10, 4★ → −15) cumulés pendant la manche
+                    const sb = (starBonuses && starBonuses[i]) ? starBonuses[i] : 0;
+                    if (sb !== 0) {
+                        score += sb; // déjà négatif
+                        log(players[i] + ' : ' + sb + ' pts (bonus étoiles)');
+                    }
                 }
                 return score;
             });
