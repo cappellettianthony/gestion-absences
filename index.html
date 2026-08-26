@@ -405,6 +405,7 @@
                 </div>
                 <div id="my-actions" style="font-size:12px;color:#aaa;margin-top:6px;"></div>
                 <div id="action-hint" style="font-size:11px;color:#ff0;margin-top:6px;"></div>
+                <button type="button" id="btn-cancel-action" onclick="cancelPendingAction()" style="display:none;border-color:#ef5350;color:#ef5350;font-size:12px;padding:8px 14px;margin-top:8px;">✕ Annuler l'action en cours</button>
             </div>
         </div>
         
@@ -492,6 +493,7 @@
         let actionDiscard = [];
         let actionFaceUp = []; // 4 cartes action visibles
         let playerActions = []; // array of arrays: actions held by each player
+        let starBonuses = []; // bonus points (négatifs) pour colonnes/lignes d'étoiles
         let actionTurnUsed = false; // true if player already chose their action this turn
         let pendingActionEffect = null; // { type, ... } for multi-step actions
         let extraTurn = false; // double move
@@ -1175,7 +1177,7 @@
                 discardPile,
                 discardPiles,
                 gameRules,
-                actionDeck, actionDiscard, actionFaceUp, playerActions, actionTurnUsed, pendingActionEffect, extraTurn,
+                actionDeck, actionDiscard, actionFaceUp, playerActions, starBonuses, actionTurnUsed, pendingActionEffect, extraTurn,
                 initialRevealStreak,
                 extraInitialReveals,
                 grids,
@@ -1230,6 +1232,7 @@
                 if (data.actionDiscard) actionDiscard = data.actionDiscard;
                 if (data.actionFaceUp) actionFaceUp = data.actionFaceUp;
                 if (data.playerActions) playerActions = data.playerActions;
+                if (data.starBonuses) starBonuses = data.starBonuses;
                 actionTurnUsed = !!data.actionTurnUsed;
                 pendingActionEffect = data.pendingActionEffect || null;
                 extraTurn = !!data.extraTurn;
@@ -1499,6 +1502,7 @@
 
         function initActionPlayers() {
             playerActions = players.map(() => []);
+            starBonuses = players.map(() => 0); // cumul −10 / −15 des lignes d'étoiles défaussées
             actionTurnUsed = false;
             pendingActionEffect = null;
             extraTurn = false;
@@ -1539,10 +1543,30 @@
 
             const hint = document.getElementById('action-hint');
             if (hint) {
-                if (actionTurnUsed) hint.textContent = 'Action du tour déjà utilisée — finis ton action de jeu si besoin.';
-                else if (pendingActionEffect) hint.textContent = "Résous l'effet : " + (pendingActionEffect.hint || pendingActionEffect.type);
-                else hint.textContent = "Ou pioche/défausse une carte chiffre comme d'habitude.";
+                if (pendingActionEffect) {
+                    hint.textContent = "Résous l'effet : " + (pendingActionEffect.hint || pendingActionEffect.type) + " — ou annule ci-dessous";
+                } else if (actionTurnUsed) {
+                    hint.textContent = "Action du tour déjà utilisée — finis ton action de jeu si besoin.";
+                } else {
+                    hint.textContent = "Ou pioche/défausse une carte chiffre comme d'habitude.";
+                }
             }
+            const btnCancel = document.getElementById('btn-cancel-action');
+            if (btnCancel) {
+                btnCancel.style.display = (pendingActionEffect && canAct) ? 'inline-block' : 'none';
+            }
+        }
+
+        function cancelPendingAction() {
+            if (!pendingActionEffect) return;
+            if (isRemoteMode && pendingActionEffect.player !== myPlayerIndex) return;
+            if (!isRemoteMode && pendingActionEffect.player !== currentPlayerIndex) return;
+            log((players[pendingActionEffect.player] || '?') + " annule l'action en cours (effet abandonné)");
+            pendingActionEffect = null;
+            actionTurnUsed = false;
+            renderAll();
+            if (isRemoteMode) pushFullState();
+            nextPlayer();
         }
 
         function takeFaceUpAction(i) {
@@ -2014,9 +2038,10 @@
                     hiddenCount++;
                 }
             }
-            // Cartes Action encore en main : +10 chacune (mode Action, visibles en score)
-            if (gameRules.action && playerActions[pIdx]) {
-                visible += playerActions[pIdx].length * 10;
+            // Mode Action : Actions non jouées (+10) + bonus étoiles déjà gagnés
+            if (gameRules.action) {
+                if (playerActions[pIdx]) visible += playerActions[pIdx].length * 10;
+                if (starBonuses[pIdx]) visible += starBonuses[pIdx];
             }
             return { visible, hiddenCount };
         }
@@ -2067,7 +2092,8 @@
                     );
                     const targetingAction = pe && (
                         pe.type === 'revelation' || pe.type === 'look_own' ||
-                        pe.type === 'look_opp' || pe.type === 'swap_opp'
+                        pe.type === 'look_opp' || pe.type === 'swap_opp' ||
+                        pe.type === 'swap_own'
                     );
                     if (targetingAction && isActionActor && !clr.has(pos) && phase === 'playing') {
                         cardEl.onclick = () => cardClicked(idx, pos);
@@ -2259,6 +2285,8 @@
         }
 
         function discardLine(pIdx, ids, label) {
+            const vals = ids.map(x => grids[pIdx][x]);
+            const allStars = vals.every(v => v === '★' || v === '*');
             ids.forEach(x => {
                 if (!discardPiles[0]) discardPiles[0] = [];
                 discardPiles[0].push(grids[pIdx][x]);
@@ -2266,7 +2294,22 @@
                 revealed[pIdx].delete(x);
             });
             syncDiscardPileAlias();
-            log('✅ ' + label + ' — cartes défaussées.');
+            // Mode Action : bonus officiel étoiles
+            // Colonne de 3★ → −10 | Ligne de 4★ → −15
+            if (gameRules.action && allStars) {
+                if (!starBonuses[pIdx]) starBonuses[pIdx] = 0;
+                if (ids.length >= 4) {
+                    starBonuses[pIdx] -= 15;
+                    log('✅ ' + label + ' — cartes défaussées. Bonus étoiles : −15 pts');
+                } else if (ids.length >= 3) {
+                    starBonuses[pIdx] -= 10;
+                    log('✅ ' + label + ' — cartes défaussées. Bonus étoiles : −10 pts');
+                } else {
+                    log('✅ ' + label + ' — cartes défaussées.');
+                }
+            } else {
+                log('✅ ' + label + ' — cartes défaussées.');
+            }
         }
 
         function checkColumns(pIdx) {
@@ -2650,10 +2693,17 @@
                 let score = 0;
                 const clr = cleared[i] instanceof Set ? cleared[i] : new Set(cleared[i] || []);
                 for (let j = 0; j < 12; j++) if (!clr.has(j)) score += cardValueForScore(grids[i][j]);
-                // Actions non jouées : +10 chacune
-                if (gameRules.action && playerActions[i]) score += playerActions[i].length * 10;
-                // Bonus étoiles : colonne 3★ → −10 (si encore présentes — déjà cleared sinon)
-                // (appliqué via cleared déjà ; bonus optionnel si 3★ cleared ensemble non tracké simplement)
+                // Mode Action — malus : cartes Action non jouées = +10 chacune
+                if (gameRules.action && playerActions[i] && playerActions[i].length) {
+                    const malus = playerActions[i].length * 10;
+                    score += malus;
+                    log(players[i] + ' : +' + malus + ' pts (Actions non jouées ×10)');
+                }
+                // Mode Action — bonus étoiles déjà obtenus en défaussant 3★/4★
+                if (gameRules.action && starBonuses[i]) {
+                    score += starBonuses[i]; // déjà négatif
+                    log(players[i] + ' : ' + starBonuses[i] + ' pts (bonus étoiles)');
+                }
                 return score;
             });
             const roundScores = baseScores.slice();
