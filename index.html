@@ -21,6 +21,17 @@
         h1 { color: #ff0; text-shadow: 0 0 15px #ff0; }
         
         .setup { max-width: 700px; margin: 0 auto 30px; padding: 20px; background: rgba(0,30,0,0.8); border: 3px solid #0f0; border-radius: 12px; }
+        .rules-box {
+            text-align: left; margin: 18px auto 10px; padding: 14px;
+            border: 2px solid #0f0; border-radius: 10px; background: rgba(0,0,0,0.35);
+            max-width: 560px; font-size: 12px; line-height: 1.5;
+        }
+        .rules-box h3 { color: #ff0; margin: 0 0 10px; font-size: 14px; text-align: center; }
+        .rules-box label { display: block; margin: 8px 0; cursor: pointer; }
+        .rules-box label input { margin-right: 8px; transform: scale(1.15); }
+        .rules-box .rule-desc { color: #aaa; font-size: 10px; margin-left: 24px; display: block; }
+        #discard-piles-wrap { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; }
+
         
         .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; max-width: 480px; margin: 20px auto; }
         
@@ -295,6 +306,36 @@
             </div>
         </div>
         
+
+        <div class="rules-box" id="rules-options">
+            <h3>Règles de la partie</h3>
+            <label>
+                <input type="checkbox" id="rule-standard" checked onchange="onRuleToggle('standard')">
+                <strong>Standard</strong>
+                <span class="rule-desc">Règles classiques Skyjo (exclut les autres options)</span>
+            </label>
+            <label>
+                <input type="checkbox" id="rule-double" onchange="onRuleToggle('double')">
+                <strong>Double</strong>
+                <span class="rule-desc">Si tu révèles 2 cartes identiques d'affilée en début de partie, tu peux en retourner une 3ᵉ</span>
+            </label>
+            <label>
+                <input type="checkbox" id="rule-doubleDiscard" onchange="onRuleToggle('doubleDiscard')">
+                <strong>Double défausse</strong>
+                <span class="rule-desc">Deux piles de défausse visibles — choix à chaque tour</span>
+            </label>
+            <label>
+                <input type="checkbox" id="rule-bonus" onchange="onRuleToggle('bonus')">
+                <strong>Bonus</strong>
+                <span class="rule-desc">Toutes les colonnes supprimées en fin de manche → −10 points</span>
+            </label>
+            <label>
+                <input type="checkbox" id="rule-sequences" onchange="onRuleToggle('sequences')">
+                <strong>Suites</strong>
+                <span class="rule-desc">Colonne de 3 cartes qui se suivent (ex. 5-6-7) aussi supprimable</span>
+            </label>
+        </div>
+
         <button id="start-local-btn" onclick="startGame()">Commencer la partie</button>
     </div>
 
@@ -323,9 +364,15 @@
                     <div id="deck-card" onclick="drawFromDeck()" class="card" style="width:90px;height:125px;background:#222;color:#666;cursor:pointer;margin:10px auto;">?</div>
                     <small><span id="deck-count"></span> cartes</small>
                 </div>
-                <div>
-                    <strong>Défausse</strong><br>
-                    <div id="discard-card" class="card" style="width:90px;height:125px;margin:10px auto;" onclick="takeDiscard()"></div>
+                <div id="discard-piles-wrap">
+                    <div>
+                        <strong>Défausse <span id="discard-label-0"></span></strong><br>
+                        <div id="discard-card-0" class="card" style="width:90px;height:125px;margin:10px auto;" onclick="onDiscardPileClick(0)"></div>
+                    </div>
+                    <div id="discard-pile-1-wrap" style="display:none;">
+                        <strong>Défausse B</strong><br>
+                        <div id="discard-card-1" class="card" style="width:90px;height:125px;margin:10px auto;" onclick="onDiscardPileClick(1)"></div>
+                    </div>
                 </div>
             </div>
             
@@ -415,6 +462,10 @@
         let selectedCard = null;
         let selectedFromDiscard = false;
         let mustReveal = false;
+        let gameRules = { standard: true, double: false, doubleDiscard: false, bonus: false, sequences: false };
+        let discardPiles = [[], []]; // pile 0 always used; pile 1 if doubleDiscard
+        let initialRevealStreak = {}; // playerIdx -> { lastValue, count } for rule Double
+        let extraInitialReveals = {}; // playerIdx -> remaining extra flips allowed
         let isSoloMode = false;
         let isRemoteMode = false;
         let aiLevel = 2;
@@ -492,6 +543,10 @@
                     cleared: setsToArrays(cleared),
                     deck,
                     discardPile,
+                    discardPiles,
+                    gameRules,
+                    initialRevealStreak,
+                    extraInitialReveals,
                     phase,
                     currentPlayerIndex,
                     selectedCard,
@@ -538,6 +593,10 @@
             cleared = arraysToSets(data.cleared);
             deck = data.deck || [];
             discardPile = data.discardPile || [];
+            discardPiles = data.discardPiles || [discardPile.slice(), []];
+            gameRules = data.gameRules || gameRules;
+            initialRevealStreak = data.initialRevealStreak || {};
+            extraInitialReveals = data.extraInitialReveals || {};
             phase = data.phase || 'playing';
             currentPlayerIndex = data.currentPlayerIndex || 0;
             selectedCard = data.selectedCard ?? null;
@@ -616,6 +675,74 @@
             document.getElementById('distant-options').style.display = mode === 'distant' ? 'block' : 'none';
             document.getElementById('start-local-btn').style.display = mode === 'distant' ? 'none' : 'inline-block';
         }
+
+        function onRuleToggle(which) {
+            const std = document.getElementById('rule-standard');
+            const dbl = document.getElementById('rule-double');
+            const dd = document.getElementById('rule-doubleDiscard');
+            const bon = document.getElementById('rule-bonus');
+            const seq = document.getElementById('rule-sequences');
+            if (which === 'standard' && std.checked) {
+                dbl.checked = false;
+                dd.checked = false;
+                bon.checked = false;
+                seq.checked = false;
+            } else if (which !== 'standard') {
+                if (dbl.checked || dd.checked || bon.checked || seq.checked) {
+                    std.checked = false;
+                }
+                // Si tout est décoché → standard
+                if (!dbl.checked && !dd.checked && !bon.checked && !seq.checked) {
+                    std.checked = true;
+                }
+            } else if (which === 'standard' && !std.checked) {
+                // empêche de tout décocher
+                if (!dbl.checked && !dd.checked && !bon.checked && !seq.checked) {
+                    std.checked = true;
+                }
+            }
+            readRulesFromUI();
+        }
+
+        function readRulesFromUI() {
+            gameRules = {
+                standard: !!document.getElementById('rule-standard').checked,
+                double: !!document.getElementById('rule-double').checked,
+                doubleDiscard: !!document.getElementById('rule-doubleDiscard').checked,
+                bonus: !!document.getElementById('rule-bonus').checked,
+                sequences: !!document.getElementById('rule-sequences').checked
+            };
+            if (gameRules.standard) {
+                gameRules.double = false;
+                gameRules.doubleDiscard = false;
+                gameRules.bonus = false;
+                gameRules.sequences = false;
+            }
+            return gameRules;
+        }
+
+        function applyRulesToUI() {
+            document.getElementById('rule-standard').checked = !!gameRules.standard;
+            document.getElementById('rule-double').checked = !!gameRules.double;
+            document.getElementById('rule-doubleDiscard').checked = !!gameRules.doubleDiscard;
+            document.getElementById('rule-bonus').checked = !!gameRules.bonus;
+            document.getElementById('rule-sequences').checked = !!gameRules.sequences;
+        }
+
+        function syncDiscardPileAlias() {
+            // Compat : discardPile pointe sur la pile 0
+            discardPile = discardPiles[0] || [];
+        }
+
+        function initDiscardPilesFromDeck() {
+            discardPiles = [[], []];
+            if (deck.length) discardPiles[0].push(deck.pop());
+            if (gameRules.doubleDiscard && deck.length) {
+                discardPiles[1].push(deck.pop());
+            }
+            syncDiscardPileAlias();
+        }
+
 
         function generateRoomCode() {
             const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -888,6 +1015,8 @@
                     joinedAt: p.joinedAt || Date.now()
                 }));
                 players = playerMeta.map(p => p.name);
+                // Règles prises chez l'hôte (UI) au lancement
+                readRulesFromUI();
                 createDeck();
                 grids = [];
                 revealed = [];
@@ -897,7 +1026,9 @@
                     revealed.push([]);
                     cleared.push([]);
                 }
-                discardPile = [deck.pop()];
+                initDiscardPilesFromDeck();
+                initialRevealStreak = {};
+                extraInitialReveals = {};
                 phase = 'initialReveal';
                 currentPlayerIndex = 0;
                 selectedCard = null;
@@ -915,6 +1046,7 @@
 
         function pushFullState(status) {
             if (!isRemoteMode || !remoteRef) return;
+            syncDiscardPileAlias();
             // Préserver clientId / joinedAt des joueurs
             const playersPayload = players.map((n, i) => {
                 const meta = playerMeta[i] || {};
@@ -929,6 +1061,10 @@
                 players: playersPayload,
                 deck,
                 discardPile,
+                discardPiles,
+                gameRules,
+                initialRevealStreak,
+                extraInitialReveals,
                 grids,
                 revealed: revealed.map(s => Array.isArray(s) ? s : Array.from(s)),
                 cleared: cleared.map(s => Array.isArray(s) ? s : Array.from(s)),
@@ -970,6 +1106,14 @@
 
                 deck = data.deck || [];
                 discardPile = data.discardPile || [];
+                if (data.discardPiles) {
+                    discardPiles = data.discardPiles;
+                } else {
+                    discardPiles = [discardPile.slice(), []];
+                }
+                if (data.gameRules) gameRules = data.gameRules;
+                initialRevealStreak = data.initialRevealStreak || {};
+                extraInitialReveals = data.extraInitialReveals || {};
                 grids = data.grids || [];
                 revealed = (data.revealed || []).map(arr => new Set(arr || []));
                 cleared = (data.cleared || []).map(arr => new Set(arr || []));
@@ -1249,6 +1393,7 @@
                 }
             }
             
+            readRulesFromUI();
             createDeck();
             grids = []; revealed = []; cleared = [];
             for (let i = 0; i < players.length; i++) {
@@ -1257,7 +1402,9 @@
                 cleared.push(new Set());
             }
             
-            discardPile = [deck.pop()];
+            initDiscardPilesFromDeck();
+            initialRevealStreak = {};
+            extraInitialReveals = {};
             
             document.getElementById('setup-screen').style.display = 'none';
             document.getElementById('game-screen').style.display = 'block';
@@ -1277,6 +1424,14 @@
             closeGameOverModal();
             closeScoreModal();
             closeRoundEndModal();
+
+            const activeRules = [];
+            if (gameRules.standard) activeRules.push('Standard');
+            if (gameRules.double) activeRules.push('Double');
+            if (gameRules.doubleDiscard) activeRules.push('Double défausse');
+            if (gameRules.bonus) activeRules.push('Bonus −10');
+            if (gameRules.sequences) activeRules.push('Suites');
+            log('Règles : ' + (activeRules.join(', ') || 'Standard'));
             
             updatePhase();
             renderAll();
@@ -1390,16 +1545,25 @@
             defausserBtn.disabled = !canAct || selectedCard === null || mustReveal || (players[currentPlayerIndex] === "IA");
             
             const deckCard = document.getElementById('deck-card');
-            const discardEl = document.getElementById('discard-card');
-            // Pioche / défausse interdites si carte en main OU obligation de retourner une carte
-            const canDrawOrTake = canAct && selectedCard === null && !mustReveal;
+            // Pioche interdite si carte en main ou mustReveal
+            const canDraw = canAct && selectedCard === null && !mustReveal;
+            // Défausse : prendre si pas de carte en main ; poser si carte piochée (pas fromDiscard)
+            const canInteractDiscard = canAct && !mustReveal && (
+                selectedCard === null || (selectedCard !== null && !selectedFromDiscard)
+            );
             if (deckCard) {
-                deckCard.style.opacity = canDrawOrTake ? '1' : '0.5';
-                deckCard.style.pointerEvents = canDrawOrTake ? 'auto' : 'none';
+                deckCard.style.opacity = canDraw ? '1' : '0.5';
+                deckCard.style.pointerEvents = canDraw ? 'auto' : 'none';
             }
-            if (discardEl) {
-                discardEl.style.opacity = canDrawOrTake && discardPile.length > 0 ? '1' : '0.5';
-                discardEl.style.pointerEvents = canDrawOrTake ? 'auto' : 'none';
+            for (let i = 0; i < 2; i++) {
+                const el = document.getElementById('discard-card-' + i);
+                if (!el) continue;
+                const pile = discardPiles[i] || [];
+                const canTake = canAct && selectedCard === null && !mustReveal && pile.length > 0;
+                const canPut = canAct && selectedCard !== null && !selectedFromDiscard && !mustReveal;
+                const active = canTake || canPut;
+                el.style.opacity = active ? '1' : '0.5';
+                el.style.pointerEvents = active ? 'auto' : 'none';
             }
             updateTurnLockUI();
             reapplyMoodOverlays();
@@ -1420,11 +1584,37 @@
             
             if (phase === 'initialReveal') {
                 if (!revealed[playerIdx].has(pos)) {
+                    const val = grids[playerIdx][pos];
                     revealed[playerIdx].add(pos);
-                    log(`${players[playerIdx]} retourne : ${grids[playerIdx][pos]}`);
+                    log(`${players[playerIdx]} retourne : ${val}`);
+
+                    // Règle Double : 2 identiques d'affilée → droit à une 3e
+                    if (gameRules.double) {
+                        const key = String(playerIdx);
+                        const streak = initialRevealStreak[key] || { lastValue: null, count: 0 };
+                        if (streak.lastValue === val) {
+                            streak.count += 1;
+                        } else {
+                            streak.lastValue = val;
+                            streak.count = 1;
+                        }
+                        initialRevealStreak[key] = streak;
+                        if (streak.count >= 2 && (extraInitialReveals[key] || 0) < 1) {
+                            extraInitialReveals[key] = 1;
+                            log(`⭐ Règle Double : ${players[playerIdx]} peut retourner une 3ᵉ carte !`);
+                        }
+                    }
+
+                    const need = 2 + (extraInitialReveals[String(playerIdx)] || 0);
+                    // Si encore un extra en attente et size < need, ne pas passer
                     renderAll();
-                    if (revealed[playerIdx].size >= 2) nextInitialPlayer();
-                    else if (isRemoteMode) pushFullState();
+                    if (revealed[playerIdx].size >= need) {
+                        // consommer l'extra une fois la 3e jouée
+                        if ((extraInitialReveals[String(playerIdx)] || 0) > 0 && revealed[playerIdx].size >= 3) {
+                            extraInitialReveals[String(playerIdx)] = 0;
+                        }
+                        nextInitialPlayer();
+                    } else if (isRemoteMode) pushFullState();
                 }
                 return;
             }
@@ -1433,7 +1623,9 @@
                 const oldCard = grids[playerIdx][pos];
                 grids[playerIdx][pos] = selectedCard;
                 revealed[playerIdx].add(pos);
-                discardPile.push(oldCard);
+                if (!discardPiles[0]) discardPiles[0] = [];
+                discardPiles[0].push(oldCard);
+                syncDiscardPileAlias();
                 log(`Échange : ${oldCard} → défausse`);
                 
                 selectedCard = null;
@@ -1459,6 +1651,12 @@
             }
         }
 
+        function isConsecutiveTriple(vals) {
+            const s = vals.slice().sort((a, b) => a - b);
+            // Suites strictes : n, n+1, n+2 (valeurs numériques Skyjo)
+            return s[0] + 1 === s[1] && s[1] + 1 === s[2];
+        }
+
         function checkColumns(pIdx) {
             if (!(revealed[pIdx] instanceof Set)) revealed[pIdx] = new Set(revealed[pIdx] || []);
             if (!(cleared[pIdx] instanceof Set)) cleared[pIdx] = new Set(cleared[pIdx] || []);
@@ -1466,13 +1664,22 @@
                 const ids = [c, c+4, c+8];
                 if (ids.every(x => revealed[pIdx].has(x) && !cleared[pIdx].has(x))) {
                     const vals = ids.map(x => grids[pIdx][x]);
-                    if (vals.every(v => v === vals[0])) {
+                    const allSame = vals.every(v => v === vals[0]);
+                    const isSeq = gameRules.sequences && isConsecutiveTriple(vals);
+                    if (allSame || isSeq) {
                         ids.forEach(x => {
-                            discardPile.push(grids[pIdx][x]);
+                            // Ajouter à la défausse principale (pile 0)
+                            if (!discardPiles[0]) discardPiles[0] = [];
+                            discardPiles[0].push(grids[pIdx][x]);
                             cleared[pIdx].add(x);
                             revealed[pIdx].delete(x);
                         });
-                        log(`✅ Colonne de ${vals[0]} complétée ! Cartes ajoutées à la défausse.`);
+                        syncDiscardPileAlias();
+                        if (allSame) {
+                            log(`✅ Colonne de ${vals[0]} complétée ! Cartes ajoutées à la défausse.`);
+                        } else {
+                            log(`✅ Suite ${vals.slice().sort((a,b)=>a-b).join('-')} complétée ! Cartes ajoutées à la défausse.`);
+                        }
                     }
                 }
             }
@@ -1484,7 +1691,9 @@
             
             if (players.every((_, i) => {
                 const r = revealed[i] instanceof Set ? revealed[i] : new Set(revealed[i] || []);
-                return r.size >= 2;
+                const need = 2 + (extraInitialReveals[String(i)] || 0);
+                // Si encore un extra non consommé et size==2, pas prêt
+                return r.size >= need && !((extraInitialReveals[String(i)] || 0) > 0 && r.size < 3);
             })) {
                 phase = 'playing';
                 determineStarter();
@@ -1543,21 +1752,34 @@
         }
 
         function reshuffleDiscardIntoDeck() {
-            // Règle officielle Skyjo :
-            // Pioche vide → on reprend toute la défausse SAUF la carte du dessus
-            // (qui reste visible), on mélange le reste pour reformer la pioche.
-            if (discardPile.length <= 1) {
+            // Regroupe les défausses (sauf le dessus de chaque pile non vide), mélange → nouvelle pioche
+            let rest = [];
+            const tops = [];
+            for (let i = 0; i < (gameRules.doubleDiscard ? 2 : 1); i++) {
+                const pile = discardPiles[i] || [];
+                if (pile.length === 0) continue;
+                if (pile.length === 1) {
+                    tops.push({ i, card: pile[0] });
+                } else {
+                    tops.push({ i, card: pile[pile.length - 1] });
+                    rest = rest.concat(pile.slice(0, -1));
+                }
+            }
+            if (rest.length === 0) {
                 log("⚠️ Impossible de reformer la pioche (pas assez de cartes en défausse)");
                 return false;
             }
-            const topCard = discardPile.pop(); // reste visible en défausse
-            const rest = discardPile.slice();  // copie des autres cartes
             shuffle(rest);
             deck = rest;
-            discardPile = [topCard];
-            log("🔄 Pioche vide → défausse mélangée (" + deck.length + " cartes). Carte du dessus conservée : " + topCard);
+            discardPiles = [[], []];
+            tops.forEach(t => {
+                discardPiles[t.i] = [t.card];
+            });
+            syncDiscardPileAlias();
+            log("🔄 Pioche vide → défausse mélangée (" + deck.length + " cartes). Dessus des piles conservé.");
             return true;
         }
+
 
         function drawFromDeck() {
             if (phase !== 'playing' || selectedCard !== null || phase === 'ended') return;
@@ -1581,21 +1803,58 @@
             if (isRemoteMode) pushFullState();
         }
 
-        function takeDiscard() {
-            if (phase !== 'playing' || selectedCard !== null || discardPile.length === 0 || phase === 'ended') return;
+        function onDiscardPileClick(pileIdx) {
+            if (phase !== 'playing' || phase === 'ended') return;
+            if (!canInteract()) return;
+            if (players[currentPlayerIndex] === "IA") return;
+            if (mustReveal) {
+                log("❌ Après avoir défaussé ta pioche, tu dois uniquement retourner une carte de ton jeu.");
+                return;
+            }
+            // Si on a une carte piochée (pas depuis défausse) → on la pose sur cette pile
+            if (selectedCard !== null) {
+                if (selectedFromDiscard) {
+                    log("❌ Impossible de défausser une carte prise de la défausse !");
+                    return;
+                }
+                if (!discardPiles[pileIdx]) discardPiles[pileIdx] = [];
+                discardPiles[pileIdx].push(selectedCard);
+                syncDiscardPileAlias();
+                log("Carte défaussée sur la pile " + (pileIdx === 0 ? "A" : "B") + ". Retourne une carte cachée de ton jeu.");
+                selectedCard = null;
+                selectedFromDiscard = false;
+                mustReveal = true;
+                updateSelectedVisual();
+                updateDiscardVisual();
+                renderAll();
+                if (isRemoteMode) pushFullState();
+                return;
+            }
+            // Sinon prendre la carte du dessus de cette pile
+            takeDiscard(pileIdx);
+        }
+
+        function takeDiscard(pileIdx) {
+            if (pileIdx === undefined || pileIdx === null) pileIdx = 0;
+            if (!gameRules.doubleDiscard) pileIdx = 0;
+            if (phase !== 'playing' || selectedCard !== null || phase === 'ended') return;
             if (mustReveal) {
                 log("❌ Après avoir défaussé ta pioche, tu dois uniquement retourner une carte de ton jeu.");
                 return;
             }
             if (!canInteract()) return;
             if (players[currentPlayerIndex] === "IA") return;
-            selectedCard = discardPile.pop();
+            const pile = discardPiles[pileIdx] || [];
+            if (pile.length === 0) return;
+            selectedCard = pile.pop();
             selectedFromDiscard = true;
-            log(`Tu as pris la défausse : ${selectedCard}`);
+            syncDiscardPileAlias();
+            log(`Tu as pris la défausse ${gameRules.doubleDiscard ? (pileIdx === 0 ? "A" : "B") : ""} : ${selectedCard}`);
             updateSelectedVisual();
             renderAll();
             if (isRemoteMode) pushFullState();
         }
+
 
         function updateSelectedVisual() {
             const el = document.getElementById('selected-card');
@@ -1613,16 +1872,39 @@
         }
 
         function updateDiscardVisual() {
-            const el = document.getElementById('discard-card');
-            if (discardPile.length > 0) {
-                const v = discardPile[discardPile.length-1];
-                el.textContent = v;
-                el.className = `card ${getCardClass(v)}`;
-            } else {
-                el.textContent = '';
-                el.className = 'card back';
+            const wrap1 = document.getElementById('discard-pile-1-wrap');
+            if (wrap1) wrap1.style.display = gameRules.doubleDiscard ? 'block' : 'none';
+            const label0 = document.getElementById('discard-label-0');
+            if (label0) label0.textContent = gameRules.doubleDiscard ? 'A' : '';
+
+            for (let i = 0; i < 2; i++) {
+                const el = document.getElementById('discard-card-' + i);
+                if (!el) continue;
+                const pile = discardPiles[i] || [];
+                if (pile.length > 0) {
+                    const v = pile[pile.length - 1];
+                    el.textContent = v;
+                    el.className = 'card ' + getCardClass(v);
+                } else {
+                    el.textContent = '';
+                    el.className = 'card back';
+                }
+            }
+            // compat ancien id si présent
+            const legacy = document.getElementById('discard-card');
+            if (legacy) {
+                const pile = discardPiles[0] || [];
+                if (pile.length > 0) {
+                    const v = pile[pile.length - 1];
+                    legacy.textContent = v;
+                    legacy.className = 'card ' + getCardClass(v);
+                } else {
+                    legacy.textContent = '';
+                    legacy.className = 'card back';
+                }
             }
         }
+
 
         function endTurn() {
             if (phase !== 'playing' || phase === 'ended') return;
@@ -1639,7 +1921,13 @@
                     return;
                 }
                 // Carte venue de la pioche → défausse autorisée, puis obligation de retourner une carte
-                discardPile.push(selectedCard);
+                if (gameRules.doubleDiscard) {
+                    log("Clique sur la défausse A ou B pour y poser ta carte.");
+                    return;
+                }
+                if (!discardPiles[0]) discardPiles[0] = [];
+                discardPiles[0].push(selectedCard);
+                syncDiscardPileAlias();
                 log("Carte défaussée. Tu ne peux plus piocher ni prendre la défausse : retourne une carte cachée de ton jeu.");
                 selectedCard = null;
                 selectedFromDiscard = false;
@@ -1748,6 +2036,17 @@
                 }
             }
 
+            // Règle Bonus : toutes les colonnes supprimées (12 cases cleared) → −10
+            if (gameRules.bonus) {
+                players.forEach((_, i) => {
+                    const clr = cleared[i] instanceof Set ? cleared[i] : new Set(cleared[i] || []);
+                    if (clr.size >= 12) {
+                        roundScores[i] -= 10;
+                        log("🎁 Bonus pour " + players[i] + " : toutes colonnes supprimées → −10 pts");
+                    }
+                });
+            }
+
             if (!cumulativeTotals.length || cumulativeTotals.length !== players.length) {
                 cumulativeTotals = players.map(() => 0);
             }
@@ -1835,7 +2134,9 @@
                 revealed.push(isRemoteMode ? [] : new Set());
                 cleared.push(isRemoteMode ? [] : new Set());
             }
-            discardPile = [deck.pop()];
+            initDiscardPilesFromDeck();
+            initialRevealStreak = {};
+            extraInitialReveals = {};
             phase = 'initialReveal';
             currentPlayerIndex = 0;
             selectedCard = null;
@@ -2157,17 +2458,32 @@
 
             setTimeout(() => {
                 if (deck.length === 0) reshuffleDiscardIntoDeck();
-                if (deck.length === 0 && discardPile.length <= 1) {
+                if (deck.length === 0 && (discardPiles[0]||[]).length + (discardPiles[1]||[]).length <= 1) {
                     nextPlayer();
                     return;
                 }
 
-                const discardValue = discardPile.length ? discardPile[discardPile.length - 1] : null;
+                syncDiscardPileAlias();
+                // IA : regarde la meilleure (plus basse) des piles visibles
+                let discardValue = null;
+                let bestPile = 0;
+                const maxP = gameRules.doubleDiscard ? 2 : 1;
+                for (let pi = 0; pi < maxP; pi++) {
+                    const pile = discardPiles[pi] || [];
+                    if (!pile.length) continue;
+                    const top = pile[pile.length - 1];
+                    if (discardValue === null || top < discardValue) {
+                        discardValue = top;
+                        bestPile = pi;
+                    }
+                }
                 let selected = null;
                 let fromDiscard = false;
 
                 if (discardValue !== null && shouldTakeDiscard(discardValue)) {
-                    selected = discardPile.pop();
+                    if (!discardPiles[bestPile]) discardPiles[bestPile] = [];
+                    selected = discardPiles[bestPile].pop();
+                    syncDiscardPileAlias();
                     fromDiscard = true;
                     log(`IA (${getAiName()}) prend la défausse (${selected})`);
                 } else {
@@ -2263,17 +2579,21 @@
                 while (bestPos < 12 && cleared[1].has(bestPos)) bestPos++;
                 if (bestPos >= 12) {
                     // ne devrait pas arriver
-                    discardPile.push(newCard);
+                    if (!discardPiles[0]) discardPiles[0] = []; discardPiles[0].push(newCard); syncDiscardPileAlias();
                     nextPlayer();
                     return;
                 }
                 const old = grids[1][bestPos];
                 grids[1][bestPos] = newCard;
-                discardPile.push(old);
+                if (!discardPiles[0]) discardPiles[0] = [];
+                discardPiles[0].push(old);
+                syncDiscardPileAlias();
                 revealed[1].add(bestPos);
                 log(`IA (${getAiName()}) échange ${old} → ${newCard}`);
             } else if (forceRandomMiss || bestScore < threshold || bestPos < 0) {
-                discardPile.push(newCard);
+                if (!discardPiles[0]) discardPiles[0] = [];
+                discardPiles[0].push(newCard);
+                syncDiscardPileAlias();
                 log(`IA (${getAiName()}) défausse et retourne une carte`);
                 const target = chooseRevealPosition();
                 if (target !== -1) {
@@ -2283,7 +2603,9 @@
             } else {
                 const old = grids[1][bestPos];
                 grids[1][bestPos] = newCard;
-                discardPile.push(old);
+                if (!discardPiles[0]) discardPiles[0] = [];
+                discardPiles[0].push(old);
+                syncDiscardPileAlias();
                 revealed[1].add(bestPos);
                 log(`IA (${getAiName()}) échange ${old} → ${newCard}`);
             }
