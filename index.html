@@ -2060,7 +2060,20 @@
                     }
                     
                     const isMyTurn = !isRemoteMode ? (idx === currentPlayerIndex && name !== "IA") : (idx === myPlayerIndex && canInteract());
-                    if (isMyTurn && !clr.has(pos) && phase !== 'ended') {
+                    // Actions ciblant d'autres plateaux (Révélation, Espionnage, Échange adverse)
+                    const pe = pendingActionEffect;
+                    const isActionActor = pe && (
+                        isRemoteMode ? (myPlayerIndex === pe.player) : (currentPlayerIndex === pe.player)
+                    );
+                    const targetingAction = pe && (
+                        pe.type === 'revelation' || pe.type === 'look_own' ||
+                        pe.type === 'look_opp' || pe.type === 'swap_opp'
+                    );
+                    if (targetingAction && isActionActor && !clr.has(pos) && phase === 'playing') {
+                        cardEl.onclick = () => cardClicked(idx, pos);
+                        cardEl.style.cursor = 'pointer';
+                        cardEl.style.outline = '2px dashed #0ff';
+                    } else if (isMyTurn && !clr.has(pos) && phase !== 'ended') {
                         cardEl.onclick = () => cardClicked(idx, pos);
                     }
                     gridEl.appendChild(cardEl);
