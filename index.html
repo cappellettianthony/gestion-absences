@@ -175,6 +175,21 @@
         }
         .choice-option .opt-title { color: #ff0; font-weight: bold; }
         .choice-option .opt-desc { color: #aaa; font-size: 11px; display: block; margin-left: 28px; margin-top: 2px; }
+        .triple-pick-card {
+            width: 90px; height: 125px; cursor: pointer;
+            transition: transform 0.15s, box-shadow 0.15s;
+        }
+        .triple-pick-card:hover {
+            transform: scale(1.08);
+            box-shadow: 0 0 20px #ff0;
+        }
+        .triple-pick-discard {
+            background: #333 !important; color: #ef5350 !important;
+            border-color: #ef5350 !important; font-size: 14px !important;
+            display: flex; align-items: center; justify-content: center;
+            text-align: center; line-height: 1.2; padding: 6px;
+        }
+
 
 
         .mood-overlay {
@@ -511,6 +526,15 @@
                 <button type="button" id="choice-modal-ok" onclick="confirmChoiceModal()">Valider</button>
                 <button type="button" id="choice-modal-cancel" onclick="cancelChoiceModal()" style="border-color:#ff0;color:#ff0;">Annuler</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Modal Triple pioche -->
+    <div id="triple-draw-modal" class="modal-overlay">
+        <div class="modal-box" style="max-width:520px;">
+            <h2>Triple pioche</h2>
+            <p style="font-size:13px;color:#aaa;">Clique la carte à conserver, ou « Défausse » pour tout jeter.</p>
+            <div id="triple-draw-cards" style="display:flex;flex-wrap:wrap;justify-content:center;gap:14px;margin:18px 0;"></div>
         </div>
     </div>
 
@@ -1762,7 +1786,73 @@
             );
         }
 
+
+        let tripleDrawPending = null; // cartes piochées en attente de choix
+
+        function showTripleDrawModal(drawn) {
+            tripleDrawPending = drawn.slice();
+            const modal = document.getElementById('triple-draw-modal');
+            const box = document.getElementById('triple-draw-cards');
+            box.innerHTML = '';
+            drawn.forEach(function(v, i) {
+                const el = document.createElement('div');
+                el.className = 'card triple-pick-card ' + getCardClass(v);
+                el.textContent = v;
+                el.title = 'Garder cette carte';
+                el.onclick = function() { resolveTripleDraw(i); };
+                box.appendChild(el);
+            });
+            // Carte Défausse (tout jeter)
+            const disc = document.createElement('div');
+            disc.className = 'card triple-pick-card triple-pick-discard';
+            disc.innerHTML = 'Défausse<br><small>tout</small>';
+            disc.title = 'Défausser les 3 cartes';
+            disc.onclick = function() { resolveTripleDraw(-1); };
+            box.appendChild(disc);
+            modal.classList.add('visible');
+        }
+
+        function resolveTripleDraw(keepIndex) {
+            const modal = document.getElementById('triple-draw-modal');
+            modal.classList.remove('visible');
+            const drawn = tripleDrawPending || [];
+            tripleDrawPending = null;
+            if (!drawn.length) {
+                nextPlayer();
+                return;
+            }
+            let keep = null;
+            if (keepIndex >= 0 && keepIndex < drawn.length) {
+                keep = drawn[keepIndex];
+                drawn.splice(keepIndex, 1);
+            }
+            drawn.forEach(function(c) {
+                if (!discardPiles[0]) discardPiles[0] = [];
+                discardPiles[0].push(c);
+            });
+            syncDiscardPileAlias();
+            if (keep !== null) {
+                selectedCard = keep;
+                selectedFromDiscard = false;
+                actionTurnUsed = true;
+                log('Triple pioche : tu gardes ' + keep + ' — échange-la avec une carte de ton jeu.');
+                maybeStarAction(
+                    isRemoteMode ? myPlayerIndex : currentPlayerIndex,
+                    keep
+                );
+                updateSelectedVisual();
+                renderAll();
+                if (isRemoteMode) pushFullState();
+                return;
+            }
+            log('Triple pioche : toutes les cartes défaussées');
+            renderAll();
+            if (isRemoteMode) pushFullState();
+            nextPlayer();
+        }
+
         function playActionCard(card, idx) {
+
             actionTurnUsed = true;
             actionDiscard.push(card);
             log(players[idx] + ' joue Action : ' + card.name);
@@ -1813,32 +1903,9 @@
                     if (deck.length) drawn.push(deck.pop());
                 }
                 if (!drawn.length) { nextPlayer(); return; }
-                const choice = prompt('Triple pioche : ' + drawn.map(String).join(', ') + '\\nEntre la valeur à garder (ou Annuler pour défausser tout)');
-                let keep = null;
-                if (choice !== null) {
-                    // match exact
-                    const asNum = Number(choice);
-                    const idxKeep = drawn.findIndex(c => String(c) === choice || c === asNum || (choice === '★' && c === '★'));
-                    if (idxKeep >= 0) keep = drawn.splice(idxKeep, 1)[0];
-                }
-                drawn.forEach(c => { if (!discardPiles[0]) discardPiles[0]=[]; discardPiles[0].push(c); });
-                syncDiscardPileAlias();
-                if (keep !== null) {
-                    selectedCard = keep;
-                    selectedFromDiscard = false;
-                    log('Tu gardes ' + keep + ' — échange-la avec une carte de ton jeu.');
-                    actionTurnUsed = true;
-                    renderAll();
-                    if (isRemoteMode) pushFullState();
-                    return;
-                }
-                log('Triple pioche : tout défaussé');
-                renderAll();
-                if (isRemoteMode) pushFullState();
-                nextPlayer();
+                showTripleDrawModal(drawn);
                 return;
             }
-            nextPlayer();
         }
 
         function showPrivateRevelationResult(targetName, lineLabel, hiddenCards) {
