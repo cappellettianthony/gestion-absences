@@ -175,6 +175,26 @@
         }
         .choice-option .opt-title { color: #ff0; font-weight: bold; }
         .choice-option .opt-desc { color: #aaa; font-size: 11px; display: block; margin-left: 28px; margin-top: 2px; }
+        .settings-row {
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 12px; margin: 12px 0; padding: 10px 12px;
+            border: 1px solid #0f0; border-radius: 8px; background: rgba(0,0,0,0.35);
+            text-align: left; font-size: 13px;
+        }
+        .settings-row label { flex: 1; color: #0f0; }
+        .settings-row select, .settings-row input[type="range"] {
+            background: #1a0033; color: #0f0; border: 2px solid #0f0;
+            border-radius: 6px; padding: 6px 8px; font-family: inherit;
+        }
+        .settings-section-title {
+            color: #ff0; font-size: 14px; margin: 16px 0 8px; text-align: left;
+            border-bottom: 1px solid #0f0; padding-bottom: 4px;
+        }
+        #btn-settings-float {
+            position: fixed; top: 10px; right: 10px; z-index: 80;
+            font-size: 13px; padding: 8px 12px; margin: 0;
+        }
+
         .triple-pick-card {
             width: 90px; height: 125px; cursor: pointer;
             transition: transform 0.15s, box-shadow 0.15s;
@@ -323,9 +343,13 @@
 </head>
 <body>
     <h1>SKYJO</h1>
+    <button type="button" id="btn-settings-float" onclick="openSettingsModal()">⚙️ Paramètres</button>
     
     <div id="setup-screen" class="setup">
         <h2>Configuration</h2>
+        <div style="text-align:center;margin:0 0 16px;">
+            <button type="button" onclick="openSettingsModal()" style="border-color:#0ff;color:#0ff;font-size:14px;">⚙️ Paramètres (son, vibration, musique)</button>
+        </div>
         <label><input type="radio" name="mode" value="multi" checked onchange="toggleMode()"> Mode Multi (2-8 joueurs locaux)</label><br><br>
         <label><input type="radio" name="mode" value="solo" onchange="toggleMode()"> Mode Solo (contre IA)</label><br><br>
         <label><input type="radio" name="mode" value="distant" onchange="toggleMode()"> Mode Distant (en ligne via QR)</label><br><br>
@@ -467,7 +491,7 @@
             <button id="btn-nouvelle-manche" onclick="nouvelleManche()">Nouvelle Manche</button>
             <button id="btn-scores" onclick="openScoreModal()">Scores</button>
             <button id="btn-logs" onclick="openLogModal()">Logs</button>
-            <button id="btn-sound-toggle" onclick="toggleTurnSound()" style="border-color:#0ff; color:#0ff;">🔊 Son : OFF</button>
+            <button id="btn-sound-toggle" onclick="openSettingsModal()" style="border-color:#0ff; color:#0ff;">⚙️ Audio</button>
             <button id="btn-share-ingame" onclick="shareJoinLink()" style="border-color:#0ff; color:#0ff; display:none;">📤 Partager</button>
             <button id="btn-accueil" onclick="goHome()" style="border-color:#ff0; color:#ff0;">Accueil</button>
         </div>
@@ -535,6 +559,71 @@
             <h2>Triple pioche</h2>
             <p style="font-size:13px;color:#aaa;">Clique la carte à <strong>conserver</strong> (puis échange-la avec une de ton jeu).<br>Ou « Défausse » pour tout jeter, puis <strong>retourne</strong> une carte de ton jeu.</p>
             <div id="triple-draw-cards" style="display:flex;flex-wrap:wrap;justify-content:center;gap:14px;margin:18px 0;"></div>
+        </div>
+    </div>
+
+    <!-- Modal Paramètres -->
+    <div id="settings-modal" class="modal-overlay" onclick="if(event.target===this) closeSettingsModal()">
+        <div class="modal-box" style="max-width:520px; text-align:left;">
+            <h2 style="text-align:center;">⚙️ Paramètres</h2>
+
+            <div class="settings-section-title">Notifications de tour</div>
+            <div class="settings-row">
+                <label for="set-vibrate">Vibration (mobile)</label>
+                <input type="checkbox" id="set-vibrate" onchange="applySettingsFromUI()">
+            </div>
+            <div class="settings-row">
+                <label for="set-turn-sound">Son de tour</label>
+                <input type="checkbox" id="set-turn-sound" onchange="applySettingsFromUI()">
+            </div>
+            <div class="settings-row">
+                <label for="set-turn-sfx">Signal sonore de tour</label>
+                <select id="set-turn-sfx" onchange="applySettingsFromUI(); previewTurnSfx();"></select>
+            </div>
+            <div class="settings-row">
+                <label for="set-sfx-vol">Volume signal</label>
+                <input type="range" id="set-sfx-vol" min="0" max="100" value="50" onchange="applySettingsFromUI()">
+            </div>
+            <div style="text-align:center;margin:8px 0;">
+                <button type="button" onclick="previewTurnSfx()" style="font-size:12px;padding:8px 14px;">▶ Écouter le signal</button>
+            </div>
+
+            <div class="settings-section-title">Retour tactile (toucher l'écran)</div>
+            <div class="settings-row">
+                <label for="set-touch-vib">Vibration au toucher</label>
+                <input type="checkbox" id="set-touch-vib" onchange="applySettingsFromUI()">
+            </div>
+            <div class="settings-row">
+                <label for="set-touch-sound">Son au toucher</label>
+                <input type="checkbox" id="set-touch-sound" onchange="applySettingsFromUI()">
+            </div>
+            <div class="settings-row">
+                <label for="set-touch-sfx">Signal sonore au toucher</label>
+                <select id="set-touch-sfx" onchange="applySettingsFromUI(); previewTouchSfx();"></select>
+            </div>
+            <div style="text-align:center;margin:8px 0;">
+                <button type="button" onclick="previewTouchSfx()" style="font-size:12px;padding:8px 14px;">▶ Écouter le toucher</button>
+            </div>
+            <p style="font-size:11px;color:#888;margin:8px 0;">Retour court à chaque appui (cartes, boutons…). Désactive si trop sensible.</p>
+
+            <div class="settings-section-title">Bande-son rétro</div>
+            <div class="settings-row">
+                <label for="set-bgm">Musique de fond</label>
+                <input type="checkbox" id="set-bgm" onchange="applySettingsFromUI()">
+            </div>
+            <div class="settings-row">
+                <label for="set-bgm-track">Choix de la musique</label>
+                <select id="set-bgm-track" onchange="applySettingsFromUI(); restartBgmIfPlaying();"></select>
+            </div>
+            <div class="settings-row">
+                <label for="set-bgm-vol">Volume musique</label>
+                <input type="range" id="set-bgm-vol" min="0" max="100" value="25" onchange="applySettingsFromUI()">
+            </div>
+            <p style="font-size:11px;color:#888;margin:8px 0;">Plusieurs thèmes chiptune. La musique démarre après un premier clic.</p>
+
+            <div style="margin-top:20px; text-align:center;">
+                <button type="button" onclick="closeSettingsModal()">Fermer</button>
+            </div>
         </div>
     </div>
 
@@ -1375,62 +1464,395 @@
             return myPlayerIndex === currentPlayerIndex;
         }
 
-        // Vibration + son de cloche au début du tour
+        // ========== Audio / Vibration / Paramètres ==========
         let lastVibratedTurnKey = null;
-        let turnNotifySerial = 0; // incrémente à chaque changement de tour → notif à chaque tour
-        let turnSoundEnabled = localStorage.getItem('skyjo_turnSound') === '1';
+        let turnNotifySerial = 0;
         let audioCtx = null;
+        let bgmNodes = null; // { oscs, gains, timer, master }
+        let bgmPlaying = false;
+
+        const TURN_SFX_PRESETS = {
+            bell: { name: 'Cloche rétro', play: function(ctx, t, vol) {
+                beep(ctx, t, 880, 0.12, 'square', vol * 0.15);
+                beep(ctx, t + 0.1, 1320, 0.18, 'square', vol * 0.12);
+            }},
+            coin: { name: 'Pièce 8-bit', play: function(ctx, t, vol) {
+                beep(ctx, t, 988, 0.08, 'square', vol * 0.14);
+                beep(ctx, t + 0.08, 1319, 0.12, 'square', vol * 0.12);
+            }},
+            blip: { name: 'Blip arcade', play: function(ctx, t, vol) {
+                beep(ctx, t, 440, 0.06, 'square', vol * 0.16);
+                beep(ctx, t + 0.07, 660, 0.06, 'square', vol * 0.14);
+                beep(ctx, t + 0.14, 880, 0.1, 'square', vol * 0.12);
+            }},
+            powerup: { name: 'Power-up', play: function(ctx, t, vol) {
+                [523, 659, 784, 1047].forEach(function(f, i) {
+                    beep(ctx, t + i * 0.07, f, 0.09, 'square', vol * 0.11);
+                });
+            }},
+            laser: { name: 'Laser', play: function(ctx, t, vol) {
+                const osc = ctx.createOscillator();
+                const g = ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(880, t);
+                osc.frequency.exponentialRampToValueAtTime(110, t + 0.25);
+                g.gain.setValueAtTime(vol * 0.12, t);
+                g.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
+                osc.connect(g); g.connect(ctx.destination);
+                osc.start(t); osc.stop(t + 0.28);
+            }},
+            chiptune: { name: 'Chiptune ping', play: function(ctx, t, vol) {
+                beep(ctx, t, 784, 0.05, 'triangle', vol * 0.14);
+                beep(ctx, t + 0.06, 1175, 0.08, 'triangle', vol * 0.12);
+                beep(ctx, t + 0.14, 1568, 0.1, 'triangle', vol * 0.1);
+            }}
+        };
+
+        function loadAudioSettings() {
+            return {
+                vibrate: localStorage.getItem('skyjo_vibrate') !== '0', // default ON
+                turnSound: localStorage.getItem('skyjo_turnSound') === '1',
+                turnSfx: localStorage.getItem('skyjo_turnSfx') || 'bell',
+                sfxVol: parseInt(localStorage.getItem('skyjo_sfxVol') || '50', 10) / 100,
+                bgm: localStorage.getItem('skyjo_bgm') === '1',
+                bgmVol: parseInt(localStorage.getItem('skyjo_bgmVol') || '25', 10) / 100,
+                touchVib: localStorage.getItem('skyjo_touchVib') === '1',
+                touchSound: localStorage.getItem('skyjo_touchSound') === '1',
+                touchSfx: localStorage.getItem('skyjo_touchSfx') || 'blip',
+                bgmTrack: localStorage.getItem('skyjo_bgmTrack') || 'arcade'
+            };
+        }
+        let audioSettings = loadAudioSettings();
+        // aliases used elsewhere
+        let turnSoundEnabled = audioSettings.turnSound;
+
+        function ensureAudioCtx() {
+            const Ctx = window.AudioContext || window.webkitAudioContext;
+            if (!Ctx) return null;
+            if (!audioCtx) audioCtx = new Ctx();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            return audioCtx;
+        }
+
+        function beep(ctx, start, freq, dur, type, gainVal) {
+            try {
+                const osc = ctx.createOscillator();
+                const g = ctx.createGain();
+                osc.type = type || 'square';
+                osc.frequency.setValueAtTime(freq, start);
+                g.gain.setValueAtTime(0.0001, start);
+                g.gain.exponentialRampToValueAtTime(Math.max(0.0001, gainVal), start + 0.01);
+                g.gain.exponentialRampToValueAtTime(0.0001, start + dur);
+                osc.connect(g);
+                g.connect(ctx.destination);
+                osc.start(start);
+                osc.stop(start + dur + 0.02);
+            } catch (e) {}
+        }
+
+        function playTurnBell(preview) {
+            playTurnSfx(preview);
+        }
+
+        function playTurnSfx(preview) {
+            try {
+                const ctx = ensureAudioCtx();
+                if (!ctx) return;
+                const key = audioSettings.turnSfx || 'bell';
+                const preset = TURN_SFX_PRESETS[key] || TURN_SFX_PRESETS.bell;
+                const vol = (preview ? 0.9 : 1) * (audioSettings.sfxVol || 0.5);
+                preset.play(ctx, ctx.currentTime, vol);
+            } catch (e) {}
+        }
+
+        function previewTurnSfx() {
+            applySettingsFromUI();
+            playTurnSfx(true);
+        }
+
+        function playSfxByKey(key, preview) {
+            try {
+                const ctx = ensureAudioCtx();
+                if (!ctx) return;
+                const preset = TURN_SFX_PRESETS[key] || TURN_SFX_PRESETS.blip;
+                const vol = (preview ? 0.85 : 0.7) * (audioSettings.sfxVol || 0.5);
+                preset.play(ctx, ctx.currentTime, vol);
+            } catch (e) {}
+        }
+
+        function previewTouchSfx() {
+            applySettingsFromUI();
+            playSfxByKey(audioSettings.touchSfx || 'blip', true);
+            if (audioSettings.touchVib) {
+                try { if (navigator.vibrate) navigator.vibrate(12); } catch (e) {}
+            }
+        }
+
+        let lastTouchFeedbackAt = 0;
+        function triggerTouchFeedback(ev) {
+            if (!audioSettings) return;
+            if (!audioSettings.touchVib && !audioSettings.touchSound) return;
+            // Ignore pure UI chrome that shouldn't spam (optional: still allow)
+            const t = ev && ev.target;
+            if (t && t.closest && t.closest('#settings-modal, #choice-modal, #spy-private-modal')) {
+                // still allow light feedback inside settings for testing via buttons only
+                if (!t.closest('button, .card, input, label, select')) return;
+            }
+            const now = Date.now();
+            if (now - lastTouchFeedbackAt < 45) return; // anti-spam
+            lastTouchFeedbackAt = now;
+            if (audioSettings.touchVib) {
+                try { if (navigator.vibrate) navigator.vibrate(10); } catch (e) {}
+            }
+            if (audioSettings.touchSound) {
+                playSfxByKey(audioSettings.touchSfx || 'blip', false);
+            }
+        }
+
+        function installTouchFeedbackListeners() {
+            // pointerdown couvre souris + tactile
+            document.addEventListener('pointerdown', function(ev) {
+                if (ev.button !== undefined && ev.button !== 0) return;
+                triggerTouchFeedback(ev);
+            }, { passive: true });
+        }
+
+        // ---- Bande-son rétro (boucle simple chiptune générée) ----
+        function stopBgm() {
+            if (!bgmNodes) { bgmPlaying = false; return; }
+            try {
+                if (bgmNodes.timer) clearInterval(bgmNodes.timer);
+                (bgmNodes.oscs || []).forEach(function(o) { try { o.stop(); o.disconnect(); } catch (e) {} });
+                if (bgmNodes.master) try { bgmNodes.master.disconnect(); } catch (e) {}
+            } catch (e) {}
+            bgmNodes = null;
+            bgmPlaying = false;
+        }
+
+        // Thèmes de fond rétro (générés en Web Audio)
+        const BGM_TRACKS = {
+            arcade: {
+                name: 'Arcade classique',
+                tempo: 220,
+                melody: [262, 330, 392, 523, 392, 330, 294, 349, 440, 349, 294, 262],
+                bass: [131, 131, 165, 165, 147, 147, 175, 175],
+                leadType: 'square',
+                bassType: 'triangle'
+            },
+            dungeon: {
+                name: 'Donjon 8-bit',
+                tempo: 280,
+                melody: [220, 233, 247, 262, 247, 233, 208, 196, 185, 196, 208, 220],
+                bass: [110, 110, 98, 98, 104, 104, 92, 92],
+                leadType: 'triangle',
+                bassType: 'square'
+            },
+            space: {
+                name: 'Espace synth',
+                tempo: 200,
+                melody: [196, 247, 294, 392, 294, 247, 220, 277, 330, 277, 220, 196],
+                bass: [98, 98, 123, 123, 110, 110, 131, 131],
+                leadType: 'sawtooth',
+                bassType: 'triangle'
+            },
+            victory: {
+                name: 'Fanfare pixel',
+                tempo: 180,
+                melody: [392, 392, 440, 523, 523, 440, 392, 349, 330, 349, 392, 392],
+                bass: [196, 196, 175, 175, 165, 165, 147, 147],
+                leadType: 'square',
+                bassType: 'square'
+            },
+            puzzle: {
+                name: 'Puzzle soft',
+                tempo: 240,
+                melody: [330, 294, 262, 294, 330, 349, 392, 349, 330, 294, 262, 247],
+                bass: [165, 147, 131, 147, 165, 175, 196, 175],
+                leadType: 'triangle',
+                bassType: 'triangle'
+            },
+            chase: {
+                name: 'Course frénétique',
+                tempo: 140,
+                melody: [523, 494, 440, 392, 440, 494, 523, 587, 523, 494, 440, 392],
+                bass: [131, 147, 165, 175, 165, 147, 131, 123],
+                leadType: 'square',
+                bassType: 'sawtooth'
+            }
+        };
+
+        function startBgm() {
+            if (!audioSettings.bgm) return;
+            const ctx = ensureAudioCtx();
+            if (!ctx) return;
+            stopBgm();
+            const trackKey = audioSettings.bgmTrack || 'arcade';
+            const track = BGM_TRACKS[trackKey] || BGM_TRACKS.arcade;
+            const master = ctx.createGain();
+            master.gain.value = Math.max(0.01, (audioSettings.bgmVol || 0.25) * 0.35);
+            master.connect(ctx.destination);
+
+            const melody = track.melody;
+            const bass = track.bass;
+            let step = 0;
+            const oscs = [];
+
+            function tick() {
+                if (!audioSettings.bgm || !bgmPlaying) return;
+                const t = ctx.currentTime;
+                const f = melody[step % melody.length];
+                const b = bass[step % bass.length];
+                const o1 = ctx.createOscillator();
+                const g1 = ctx.createGain();
+                o1.type = track.leadType || 'square';
+                o1.frequency.value = f;
+                g1.gain.setValueAtTime(0.0001, t);
+                g1.gain.exponentialRampToValueAtTime(0.15, t + 0.02);
+                g1.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
+                o1.connect(g1); g1.connect(master);
+                o1.start(t); o1.stop(t + 0.2);
+                const o2 = ctx.createOscillator();
+                const g2 = ctx.createGain();
+                o2.type = track.bassType || 'triangle';
+                o2.frequency.value = b;
+                g2.gain.setValueAtTime(0.0001, t);
+                g2.gain.exponentialRampToValueAtTime(0.12, t + 0.02);
+                g2.gain.exponentialRampToValueAtTime(0.0001, t + 0.22);
+                o2.connect(g2); g2.connect(master);
+                o2.start(t); o2.stop(t + 0.25);
+                oscs.push(o1, o2);
+                if (oscs.length > 40) {
+                    const old = oscs.splice(0, 20);
+                    old.forEach(function(o) { try { o.disconnect(); } catch (e) {} });
+                }
+                step++;
+            }
+
+            bgmPlaying = true;
+            bgmNodes = { oscs: oscs, master: master, timer: setInterval(tick, track.tempo || 220), trackKey: trackKey };
+            tick();
+        }
+
+        function restartBgmIfPlaying() {
+            applySettingsFromUI();
+            if (audioSettings.bgm) {
+                stopBgm();
+                startBgm();
+            }
+        }
+
+        function updateBgmFromSettings() {
+            if (audioSettings.bgm) {
+                if (!bgmPlaying) startBgm();
+                else if (bgmNodes && bgmNodes.master) {
+                    bgmNodes.master.gain.value = Math.max(0.01, (audioSettings.bgmVol || 0.25) * 0.35);
+                }
+            } else {
+                stopBgm();
+            }
+        }
+
+        function openSettingsModal() {
+            ensureAudioCtx(); // unlock on user gesture
+            const s = audioSettings;
+            const vib = document.getElementById('set-vibrate');
+            const ts = document.getElementById('set-turn-sound');
+            const sfx = document.getElementById('set-turn-sfx');
+            const sv = document.getElementById('set-sfx-vol');
+            const bgm = document.getElementById('set-bgm');
+            const bv = document.getElementById('set-bgm-vol');
+            function fillSfxSelect(sel, current) {
+                if (!sel) return;
+                if (sel.options.length === 0) {
+                    Object.keys(TURN_SFX_PRESETS).forEach(function(k) {
+                        const opt = document.createElement('option');
+                        opt.value = k;
+                        opt.textContent = TURN_SFX_PRESETS[k].name;
+                        sel.appendChild(opt);
+                    });
+                }
+                sel.value = current || 'bell';
+            }
+            fillSfxSelect(sfx, s.turnSfx || 'bell');
+            fillSfxSelect(document.getElementById('set-touch-sfx'), s.touchSfx || 'blip');
+            if (vib) vib.checked = !!s.vibrate;
+            if (ts) ts.checked = !!s.turnSound;
+            if (sv) sv.value = Math.round((s.sfxVol || 0.5) * 100);
+            if (bgm) bgm.checked = !!s.bgm;
+            if (bv) bv.value = Math.round((s.bgmVol || 0.25) * 100);
+            const tv = document.getElementById('set-touch-vib');
+            const tso = document.getElementById('set-touch-sound');
+            if (tv) tv.checked = !!s.touchVib;
+            if (tso) tso.checked = !!s.touchSound;
+            const btr = document.getElementById('set-bgm-track');
+            if (btr) {
+                if (btr.options.length === 0) {
+                    Object.keys(BGM_TRACKS).forEach(function(k) {
+                        const opt = document.createElement('option');
+                        opt.value = k;
+                        opt.textContent = BGM_TRACKS[k].name;
+                        btr.appendChild(opt);
+                    });
+                }
+                btr.value = s.bgmTrack || 'arcade';
+            }
+            document.getElementById('settings-modal').classList.add('visible');
+            updateSoundButtonLabel();
+        }
+
+        function closeSettingsModal() {
+            applySettingsFromUI();
+            document.getElementById('settings-modal').classList.remove('visible');
+        }
+
+        function applySettingsFromUI() {
+            const vib = document.getElementById('set-vibrate');
+            const ts = document.getElementById('set-turn-sound');
+            const sfx = document.getElementById('set-turn-sfx');
+            const sv = document.getElementById('set-sfx-vol');
+            const bgm = document.getElementById('set-bgm');
+            const bv = document.getElementById('set-bgm-vol');
+            const tv = document.getElementById('set-touch-vib');
+            const tso = document.getElementById('set-touch-sound');
+            const tsx = document.getElementById('set-touch-sfx');
+            audioSettings = {
+                vibrate: vib ? vib.checked : true,
+                turnSound: ts ? ts.checked : false,
+                turnSfx: sfx ? sfx.value : 'bell',
+                sfxVol: sv ? parseInt(sv.value, 10) / 100 : 0.5,
+                bgm: bgm ? bgm.checked : false,
+                bgmVol: bv ? parseInt(bv.value, 10) / 100 : 0.25,
+                touchVib: tv ? tv.checked : false,
+                touchSound: tso ? tso.checked : false,
+                touchSfx: tsx ? tsx.value : 'blip',
+                bgmTrack: (document.getElementById('set-bgm-track') || {}).value || 'arcade'
+            };
+            turnSoundEnabled = audioSettings.turnSound;
+            localStorage.setItem('skyjo_vibrate', audioSettings.vibrate ? '1' : '0');
+            localStorage.setItem('skyjo_turnSound', audioSettings.turnSound ? '1' : '0');
+            localStorage.setItem('skyjo_turnSfx', audioSettings.turnSfx);
+            localStorage.setItem('skyjo_sfxVol', String(Math.round(audioSettings.sfxVol * 100)));
+            localStorage.setItem('skyjo_bgm', audioSettings.bgm ? '1' : '0');
+            localStorage.setItem('skyjo_bgmVol', String(Math.round(audioSettings.bgmVol * 100)));
+            localStorage.setItem('skyjo_bgmTrack', audioSettings.bgmTrack);
+            localStorage.setItem('skyjo_touchVib', audioSettings.touchVib ? '1' : '0');
+            localStorage.setItem('skyjo_touchSound', audioSettings.touchSound ? '1' : '0');
+            localStorage.setItem('skyjo_touchSfx', audioSettings.touchSfx);
+            updateBgmFromSettings();
+            updateSoundButtonLabel();
+        }
 
         function updateSoundButtonLabel() {
             const btn = document.getElementById('btn-sound-toggle');
             if (!btn) return;
-            if (turnSoundEnabled) {
-                btn.textContent = '🔔 Son : ON';
-                btn.style.borderColor = '#0f0';
-                btn.style.color = '#0f0';
-            } else {
-                btn.textContent = '🔊 Son : OFF';
-                btn.style.borderColor = '#0ff';
-                btn.style.color = '#0ff';
-            }
+            const on = audioSettings.turnSound || audioSettings.bgm;
+            btn.textContent = on ? '⚙️ Audio : ON' : '⚙️ Audio';
+            btn.style.borderColor = on ? '#0f0' : '#0ff';
+            btn.style.color = on ? '#0f0' : '#0ff';
         }
 
         function toggleTurnSound() {
-            turnSoundEnabled = !turnSoundEnabled;
-            localStorage.setItem('skyjo_turnSound', turnSoundEnabled ? '1' : '0');
-            updateSoundButtonLabel();
-            // Débloquer l'AudioContext sur geste utilisateur + aperçu
-            if (turnSoundEnabled) {
-                playTurnBell(true);
-            }
-        }
-
-        function playTurnBell(preview) {
-            try {
-                const Ctx = window.AudioContext || window.webkitAudioContext;
-                if (!Ctx) return;
-                if (!audioCtx) audioCtx = new Ctx();
-                if (audioCtx.state === 'suspended') audioCtx.resume();
-
-                const now = audioCtx.currentTime;
-                // Double tintement type cloche
-                function ding(freq, start, dur, gainVal) {
-                    const osc = audioCtx.createOscillator();
-                    const gain = audioCtx.createGain();
-                    osc.type = 'sine';
-                    osc.frequency.setValueAtTime(freq, start);
-                    osc.frequency.exponentialRampToValueAtTime(freq * 0.7, start + dur);
-                    gain.gain.setValueAtTime(0.0001, start);
-                    gain.gain.exponentialRampToValueAtTime(gainVal, start + 0.02);
-                    gain.gain.exponentialRampToValueAtTime(0.0001, start + dur);
-                    osc.connect(gain);
-                    gain.connect(audioCtx.destination);
-                    osc.start(start);
-                    osc.stop(start + dur + 0.05);
-                }
-                ding(880, now, 0.35, preview ? 0.12 : 0.18);
-                ding(1320, now + 0.12, 0.4, preview ? 0.08 : 0.12);
-            } catch (e) {}
+            openSettingsModal();
         }
 
         function notifyMyTurn() {
@@ -1444,31 +1866,30 @@
             }
             if (!isMyTurn) return;
 
-            // Clé unique par tour (serial change à chaque nextPlayer)
             const turnKey = (roomId || 'local') + ':' + phase + ':' + currentPlayerIndex + ':' + turnNotifySerial;
             if (lastVibratedTurnKey === turnKey) return;
             lastVibratedTurnKey = turnKey;
 
-            try {
-                if (navigator.vibrate) {
-                    navigator.vibrate([100, 50, 100]);
-                }
-            } catch (e) {}
+            if (audioSettings.vibrate) {
+                try {
+                    if (navigator.vibrate) navigator.vibrate([100, 50, 100]);
+                } catch (e) {}
+            }
 
-            if (turnSoundEnabled) {
-                playTurnBell(false);
+            if (audioSettings.turnSound) {
+                playTurnSfx(false);
             }
         }
 
         function bumpTurnNotify() {
             turnNotifySerial++;
-            lastVibratedTurnKey = null; // autorise une nouvelle notif
+            lastVibratedTurnKey = null;
         }
 
-        // Alias pour appels existants
         function vibrateOnMyTurn() {
             notifyMyTurn();
         }
+
 
         function sendMoodEmoji(emoji) {
             if (document.getElementById('game-screen').style.display === 'none') return;
@@ -3840,6 +4261,8 @@
         window.onload = function() {
             updateNameInputs();
             checkUrlRoom();
+            audioSettings = loadAudioSettings();
+            turnSoundEnabled = audioSettings.turnSound;
             updateSoundButtonLabel();
             // Distant d'abord, sinon restauration partie locale / solo
             const params = new URLSearchParams(window.location.search);
@@ -3849,6 +4272,16 @@
             } else {
                 restoreLocalGame();
             }
+            // Débloquer audio au premier geste
+            const unlock = function() {
+                ensureAudioCtx();
+                if (audioSettings.bgm) startBgm();
+                document.removeEventListener('click', unlock);
+                document.removeEventListener('touchstart', unlock);
+            };
+            document.addEventListener('click', unlock);
+            document.addEventListener('touchstart', unlock);
+            installTouchFeedbackListeners();
         };
     </script>
 </body>
