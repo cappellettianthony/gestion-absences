@@ -343,8 +343,6 @@
 </head>
 <body>
     <h1>SKYJO</h1>
-    <button type="button" id="btn-settings-float" onclick="openSettingsModal()">⚙️ Paramètres</button>
-    
     <div id="setup-screen" class="setup">
         <h2>Configuration</h2>
         <div style="text-align:center;margin:0 0 16px;">
@@ -600,6 +598,10 @@
             <div class="settings-row">
                 <label for="set-touch-sfx">Signal sonore au toucher</label>
                 <select id="set-touch-sfx" onchange="applySettingsFromUI(); previewTouchSfx();"></select>
+            </div>
+            <div class="settings-row">
+                <label for="set-touch-vol">Volume retour tactile</label>
+                <input type="range" id="set-touch-vol" min="0" max="100" value="40" onchange="applySettingsFromUI()">
             </div>
             <div style="text-align:center;margin:8px 0;">
                 <button type="button" onclick="previewTouchSfx()" style="font-size:12px;padding:8px 14px;">▶ Écouter le toucher</button>
@@ -1519,6 +1521,7 @@
                 touchVib: localStorage.getItem('skyjo_touchVib') === '1',
                 touchSound: localStorage.getItem('skyjo_touchSound') === '1',
                 touchSfx: localStorage.getItem('skyjo_touchSfx') || 'blip',
+                touchVol: parseInt(localStorage.getItem('skyjo_touchVol') || '40', 10) / 100,
                 bgmTrack: localStorage.getItem('skyjo_bgmTrack') || 'arcade'
             };
         }
@@ -1570,19 +1573,20 @@
             playTurnSfx(true);
         }
 
-        function playSfxByKey(key, preview) {
+        function playSfxByKey(key, preview, volScale) {
             try {
                 const ctx = ensureAudioCtx();
                 if (!ctx) return;
                 const preset = TURN_SFX_PRESETS[key] || TURN_SFX_PRESETS.blip;
-                const vol = (preview ? 0.85 : 0.7) * (audioSettings.sfxVol || 0.5);
+                const base = (volScale != null) ? volScale : (audioSettings.sfxVol || 0.5);
+                const vol = (preview ? 0.85 : 0.7) * base;
                 preset.play(ctx, ctx.currentTime, vol);
             } catch (e) {}
         }
 
         function previewTouchSfx() {
             applySettingsFromUI();
-            playSfxByKey(audioSettings.touchSfx || 'blip', true);
+            playSfxByKey(audioSettings.touchSfx || 'blip', true, audioSettings.touchVol || 0.4);
             if (audioSettings.touchVib) {
                 try { if (navigator.vibrate) navigator.vibrate(12); } catch (e) {}
             }
@@ -1605,7 +1609,7 @@
                 try { if (navigator.vibrate) navigator.vibrate(10); } catch (e) {}
             }
             if (audioSettings.touchSound) {
-                playSfxByKey(audioSettings.touchSfx || 'blip', false);
+                playSfxByKey(audioSettings.touchSfx || 'blip', false, audioSettings.touchVol || 0.4);
             }
         }
 
@@ -1784,6 +1788,8 @@
             const tso = document.getElementById('set-touch-sound');
             if (tv) tv.checked = !!s.touchVib;
             if (tso) tso.checked = !!s.touchSound;
+            const tvol = document.getElementById('set-touch-vol');
+            if (tvol) tvol.value = Math.round((s.touchVol != null ? s.touchVol : 0.4) * 100);
             const btr = document.getElementById('set-bgm-track');
             if (btr) {
                 if (btr.options.length === 0) {
@@ -1825,6 +1831,10 @@
                 touchVib: tv ? tv.checked : false,
                 touchSound: tso ? tso.checked : false,
                 touchSfx: tsx ? tsx.value : 'blip',
+                touchVol: (function() {
+                    const el = document.getElementById('set-touch-vol');
+                    return el ? parseInt(el.value, 10) / 100 : 0.4;
+                })(),
                 bgmTrack: (document.getElementById('set-bgm-track') || {}).value || 'arcade'
             };
             turnSoundEnabled = audioSettings.turnSound;
@@ -1838,6 +1848,7 @@
             localStorage.setItem('skyjo_touchVib', audioSettings.touchVib ? '1' : '0');
             localStorage.setItem('skyjo_touchSound', audioSettings.touchSound ? '1' : '0');
             localStorage.setItem('skyjo_touchSfx', audioSettings.touchSfx);
+            localStorage.setItem('skyjo_touchVol', String(Math.round((audioSettings.touchVol || 0.4) * 100)));
             updateBgmFromSettings();
             updateSoundButtonLabel();
         }
