@@ -305,17 +305,26 @@
         .locked-msg { position: fixed; top: 80px; left: 50%; transform: translateX(-50%); background: #220044; border: 3px solid #ff0; padding: 12px 24px; z-index: 10; font-size: 16px; display: none; }
 
         .modal-overlay {
-            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75);
-            z-index: 200; align-items: flex-start; justify-content: center;
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+            z-index: 200; align-items: center; justify-content: center;
             padding: 12px 20px 20px; overflow-y: auto;
         }
         .modal-overlay.visible { display: flex; }
-        /* Scores, fin de manche, fin de partie : en haut, au-dessus de la zone pioche */
+        /* Scores, fin de manche, fin de partie : en bas pour ne pas cacher les cartes */
         #score-modal.modal-overlay,
         #roundend-modal.modal-overlay,
         #gameover-modal.modal-overlay {
-            align-items: flex-start;
-            padding-top: 8px;
+            align-items: flex-end;
+            padding-top: 12px;
+            padding-bottom: 16px;
+            background: rgba(0,0,0,0.45);
+        }
+        #score-modal .modal-box,
+        #roundend-modal .modal-box,
+        #gameover-modal .modal-box {
+            margin-bottom: 8px;
+            margin-top: auto;
+            max-height: 55vh;
         }
         .modal-box {
             background: rgba(10,40,10,0.98); border: 3px solid #0f0; border-radius: 12px;
@@ -3414,12 +3423,26 @@
         function endRound() {
             phase = 'ended';
             log("=== MANCHE TERMINÉE ===");
+            // 1) Retourner toutes les cartes face cachée
             players.forEach((_,i) => { 
                 if (!(revealed[i] instanceof Set)) revealed[i] = new Set(revealed[i] || []);
+                if (!(cleared[i] instanceof Set)) cleared[i] = new Set(cleared[i] || []);
                 for(let j=0; j<12; j++) revealed[i].add(j); 
             });
+            // 2) Après révélation : supprimer colonnes/lignes identiques (et suites)
+            //    y compris colonnes/lignes d'étoiles → bonus −10 / −15 via discardLine
+            players.forEach((_, i) => {
+                // Plusieurs passes : une suppression peut en révéler d'autres théoriquement
+                for (let pass = 0; pass < 4; pass++) {
+                    const before = (cleared[i] instanceof Set ? cleared[i].size : 0);
+                    checkColumns(i);
+                    const after = (cleared[i] instanceof Set ? cleared[i].size : 0);
+                    if (after === before) break;
+                }
+            });
+            renderAll();
 
-            // Calcul des scores de base de la manche (cartes restantes non éliminées)
+            // 3) Calcul des scores (cartes restantes + malus Actions + bonus étoiles déjà enregistrés)
             const scoreBreakdown = [];
             const baseScores = players.map((n, i) => {
                 let cardsScore = 0;
